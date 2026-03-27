@@ -23,6 +23,7 @@ model User {
   vouchers Voucher[]
   employeeHours EmployeeHours[]
   projectParticipations ProjectParticipation[]
+  alerts Alert[]
 
   @@map("users")
 }
