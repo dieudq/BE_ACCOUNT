@@ -1,0 +1,143 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(cuid())
+  name      String
+  email     String?    @unique
+  telegramId String?
+  department String?
+  role      String     @default("employee")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  vouchers Voucher[]
+  employeeHours EmployeeHours[]
+  projectParticipations ProjectParticipation[]
+
+  @@map("users")
+}
+
+model Project {
+  id        String     @id @default(cuid())
+  name      String
+  code      String     @unique
+  startDate DateTime?
+  endDate   DateTime?
+  status    String     @default("active")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  vouchers Voucher[]
+  employeeHours EmployeeHours[]
+  participations ProjectParticipation[]
+
+  @@map("projects")
+}
+
+model Voucher {
+  id              String    @id @default(cuid())
+  voucherNumber   String    @unique
+  user            User?     @relation(fields: [userId], references: [id])
+  userId          String?
+  amount          Decimal?  @db.Decimal(12, 2)
+  reason          String?
+  project         Project?  @relation(fields: [projectId], references: [id])
+  projectId       String?
+  erpId           String?
+  status          String    @default("pending")
+  approvalLevel   Int       @default(0)
+  createdAt       DateTime  @default(now())
+  approvedAt      DateTime?
+  paidAt          DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  phieuChi PhieuChi?
+  botLogs BotLog[]
+
+  @@map("vouchers")
+}
+
+model PhieuChi {
+  id              String    @id @default(cuid())
+  voucher         Voucher   @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  voucherId       String    @unique
+  phieuChiNumber  String    @unique
+  content         String?
+  filePath        String?
+  generatedAt     DateTime  @default(now())
+  sentAt          DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  @@map("phieu_chi")
+}
+
+model EmployeeHours {
+  id                  String    @id @default(cuid())
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String
+  project             Project?  @relation(fields: [projectId], references: [id])
+  projectId           String?
+  year                Int
+  month               Int
+  loggedHours         Decimal?  @db.Decimal(8, 2)
+  stdHours            Decimal?  @db.Decimal(8, 2)
+  selfLearningHours   Decimal?  @db.Decimal(8, 2)
+  createdAt           DateTime  @default(now())
+  syncedAt            DateTime?
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([userId, year, month])
+  @@map("employee_hours")
+}
+
+model ProjectParticipation {
+  id                  String    @id @default(cuid())
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId              String
+  project             Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId           String
+  year                Int
+  month               Int
+  participationPercent Decimal   @db.Decimal(5, 2)
+  loggedHours         Decimal   @db.Decimal(8, 2)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([userId, projectId, year, month])
+  @@map("project_participation")
+}
+
+model BotLog {
+  id        String    @id @default(cuid())
+  action    String
+  status    String
+  details   Json?
+  voucher   Voucher?  @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+  voucherId String?
+  createdAt DateTime  @default(now())
+
+  @@map("bot_logs")
+}
+
+model Alert {
+  id              String    @id @default(cuid())
+  alertType       String
+  user            User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId          String?
+  message         String
+  sentTo          String?
+  createdAt       DateTime  @default(now())
+  acknowledgedAt  DateTime?
+
+  @@map("alerts")
+}
