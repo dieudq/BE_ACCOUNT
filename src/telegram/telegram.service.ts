@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { VoucherAutomationService } from '../vouchers/voucher-automation.service';
 import TelegramBot from 'node-telegram-bot-api';
 import axios from 'axios';
 
@@ -13,10 +14,11 @@ export class TelegramService implements OnModuleInit {
   constructor(
     private chat: ChatService,
     private prisma: PrismaService,
+    private voucherAutomation: VoucherAutomationService,
   ) {
-    const token = process.env.TELEGRAM_BOT_TOKEN_ACCOUNTING;
+    const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
-      throw new Error('TELEGRAM_BOT_TOKEN_ACCOUNTING not set');
+      throw new Error('TELEGRAM_BOT_TOKEN not set');
     }
     this.bot = new TelegramBot(token);
     
@@ -31,7 +33,7 @@ export class TelegramService implements OnModuleInit {
 
   async onModuleInit() {
     // Try to setup webhook on startup
-    const webhookUrl = process.env.WEBHOOK_URL;
+    const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL;
     if (webhookUrl) {
       await this.setupWebhook(webhookUrl);
     }
@@ -39,7 +41,7 @@ export class TelegramService implements OnModuleInit {
 
   async setupWebhook(webhookUrl: string) {
     try {
-      const token = process.env.TELEGRAM_BOT_TOKEN_ACCOUNTING;
+      const token = process.env.TELEGRAM_BOT_TOKEN;
       const url = `https://api.telegram.org/bot${token}/setWebhook`;
       
       const response = await axios.post(url, {
@@ -68,17 +70,17 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
-      // Get user for role check
-      let user = await this.prisma.user.findUnique({
-        where: { id: userIdForQuery },
+      // Get or create user
+      let user = await this.prisma.user.findFirst({
+        where: { telegramId: userIdForQuery },
       });
 
       if (!user) {
         // Auto-create user
         user = await this.prisma.user.create({
           data: {
-            id: userIdForQuery,
             name: `User ${userIdForQuery}`,
+            email: `${userIdForQuery}@bot.local`,
             telegramId: userIdForQuery,
             role: 'employee',
           },
@@ -91,13 +93,41 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
-      // Get AI response
-      const answer = await this.chat.processQuery(message, userIdForQuery);
+      // Phase 3: Check if message is voucher confirmation
+      if (message.startsWith('YES ')) {
+        const confirmationId = message.substring(4).trim();
+        const result = await this.voucherAutomation.confirmVoucher(userIdForQuery, confirmationId);
+        await this.bot.sendMessage(chatId, result.message);
+        return;
+      }
+
+      if (message.toUpperCase() === 'NO') {
+        const pending = this.voucherAutomation.getPendingConfirmations(userIdForQuery);
+        if (pending.length > 0) {
+          const confirmationId = pending[0].requestId;
+          const msg = await this.voucherAutomation.rejectVoucher(confirmationId);
+          await this.bot.sendMessage(chatId, msg);
+        } else {
+          await this.bot.sendMessage(chatId, '❌ Không có xác nhận nào để hủy.');
+        }
+        return;
+      }
+
+      // Phase 3: Parse voucher intent
+      const voucherResult = await this.voucherAutomation.parseVoucherIntent(userIdForQuery, message);
+      
+      if (voucherResult.requiresConfirmation) {
+        await this.bot.sendMessage(chatId, voucherResult.message);
+        return;
+      }
+
+      // Fallback: Get AI response
+      const answer = await this.chat.processQuery(message, user.id);
 
       // Save to database
       await this.prisma.chatLog.create({
         data: {
-          userId: userIdForQuery,
+          userId: user.id,
           message,
           response: answer,
           source: 'telegram',
