@@ -24,6 +24,7 @@ model User {
   employeeHours EmployeeHours[]
   projectParticipations ProjectParticipation[]
   alerts Alert[]
+  chatLogs ChatLog[]
 
   @@map("users")
 }
@@ -141,4 +142,17 @@ model Alert {
   acknowledgedAt  DateTime?
 
   @@map("alerts")
+}
+
+model ChatLog {
+  id        String    @id @default(cuid())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  message   String
+  response  String?
+  source    String    @default("telegram")
+  metadata  Json?
+  createdAt DateTime  @default(now())
+
+  @@map("chat_logs")
 }
