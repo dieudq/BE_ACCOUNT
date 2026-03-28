@@ -73,7 +73,11 @@ export class ParticipationReportService {
         const projectMap = new Map<string, { code: string; name: string; hours: number }>();
 
         if (empHours) {
-          totalProjectHours = empHours.loggedHours ? parseFloat(empHours.loggedHours.toString()) : 0;
+          totalProjectHours = empHours.loggedHours 
+            ? typeof empHours.loggedHours === 'object' && 'toNumber' in empHours.loggedHours
+              ? (empHours.loggedHours as any).toNumber()
+              : parseFloat((empHours.loggedHours as any).toString())
+            : 0;
 
           if (empHours.project) {
             projectMap.set(empHours.project.id, {
