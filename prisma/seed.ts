@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 const prisma = new PrismaClient();
 
@@ -302,6 +303,171 @@ async function main() {
   console.log(`- Leaves: 3 (2 paid, 2.5 sick, 2.5 unpaid)`);
   console.log(`- Leave Balances: 2 (tracking March 2026)`);
   console.log(`- Telegram ID: 5377791753 (can test as emp1)`);
+
+  // ============ SEED GL ACCOUNTS ============
+  console.log('\n🏦 Seeding GL Accounts...');
+
+  // Assets
+  const glCash = await prisma.gLAccount.create({
+    data: {
+      accountCode: '1001',
+      accountName: 'Cash',
+      accountType: 'asset',
+      description: 'Current account and cash in hand',
+      isActive: true,
+    },
+  });
+
+  const glReceivables = await prisma.gLAccount.create({
+    data: {
+      accountCode: '1200',
+      accountName: 'Accounts Receivable',
+      accountType: 'asset',
+      description: 'Customer receivables',
+      isActive: true,
+    },
+  });
+
+  // Liabilities
+  const glPayables = await prisma.gLAccount.create({
+    data: {
+      accountCode: '2001',
+      accountName: 'Accounts Payable',
+      accountType: 'liability',
+      description: 'Supplier payables',
+      isActive: true,
+    },
+  });
+
+  const glShortTermLoan = await prisma.gLAccount.create({
+    data: {
+      accountCode: '2100',
+      accountName: 'Short-term Loan',
+      accountType: 'liability',
+      description: 'Short-term borrowing',
+      isActive: true,
+    },
+  });
+
+  // Equity
+  const glCapital = await prisma.gLAccount.create({
+    data: {
+      accountCode: '3001',
+      accountName: 'Charter Capital',
+      accountType: 'equity',
+      description: 'Company charter capital',
+      isActive: true,
+    },
+  });
+
+  const glRetainedEarnings = await prisma.gLAccount.create({
+    data: {
+      accountCode: '3100',
+      accountName: 'Retained Earnings',
+      accountType: 'equity',
+      description: 'Accumulated retained earnings',
+      isActive: true,
+    },
+  });
+
+  // Income
+  const glRevenue = await prisma.gLAccount.create({
+    data: {
+      accountCode: '4001',
+      accountName: 'Service Revenue',
+      accountType: 'income',
+      description: 'Revenue from services',
+      isActive: true,
+    },
+  });
+
+  const glProjectIncome = await prisma.gLAccount.create({
+    data: {
+      accountCode: '4100',
+      accountName: 'Project Income',
+      accountType: 'income',
+      description: 'Revenue from projects',
+      isActive: true,
+    },
+  });
+
+  // Expenses
+  const glSalary = await prisma.gLAccount.create({
+    data: {
+      accountCode: '5001',
+      accountName: 'Salaries and Wages',
+      accountType: 'expense',
+      description: 'Employee compensation',
+      isActive: true,
+    },
+  });
+
+  const glProjectExpense = await prisma.gLAccount.create({
+    data: {
+      accountCode: '5100',
+      accountName: 'Project Expenses',
+      accountType: 'expense',
+      description: 'Costs related to projects',
+      isActive: true,
+    },
+  });
+
+  const glOperatingExpense = await prisma.gLAccount.create({
+    data: {
+      accountCode: '5200',
+      accountName: 'Operating Expenses',
+      accountType: 'expense',
+      description: 'General operating costs',
+      isActive: true,
+    },
+  });
+
+  console.log('✅ GL Accounts created: 11 accounts');
+
+  // ============ SEED FINANCIAL PERIOD ============
+  console.log('\n📅 Seeding Financial Period...');
+
+  const period = await prisma.financialPeriod.create({
+    data: {
+      code: '2026-03',
+      description: 'March 2026',
+      startDate: new Date('2026-03-01'),
+      endDate: new Date('2026-03-31'),
+      status: 'open',
+      isClosed: false,
+      fiscalYear: 2026,
+      fiscalMonth: 3,
+    },
+  });
+
+  console.log(`✅ Period created: ${period.code}`);
+
+  // ============ SEED COST CENTER ============
+  console.log('\n💼 Seeding Cost Centers...');
+
+  const ccEngineering = await prisma.costCenter.create({
+    data: {
+      code: 'CC-ENG',
+      name: 'Engineering',
+      budget: new Decimal('100000000'), // 100M VND
+      budgetYear: 2026,
+      isActive: true,
+    },
+  });
+
+  const ccMarketing = await prisma.costCenter.create({
+    data: {
+      code: 'CC-MKT',
+      name: 'Marketing',
+      budget: new Decimal('50000000'), // 50M VND
+      budgetYear: 2026,
+      isActive: true,
+    },
+  });
+
+  console.log('✅ Cost Centers created: 2 centers');
+
+  console.log('\n✅✅✅ COMPLETE SEEDING - Ready for Phase 2 (Financial Reporting)!');
 }
 
 main()
