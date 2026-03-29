@@ -17,6 +17,7 @@ model User {
   telegramId String?
   department String?
   role      String     @default("employee")
+  joinDate  DateTime?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -25,6 +26,9 @@ model User {
   projectParticipations ProjectParticipation[]
   alerts Alert[]
   chatLogs ChatLog[]
+  leaves Leave[]
+  leaveQuotas LeaveQuota[]
+  leaveBalances LeaveBalance[]
 
   @@map("users")
 }
@@ -156,3 +160,54 @@ model ChatLog {
 
   @@map("chat_logs")
 }
+
+model Leave {
+  id              String    @id @default(cuid())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  leaveType       String    @db.VarChar(50) // "paid", "unpaid", "sick", "maternity", "personal", "other"
+  startDate       DateTime
+  endDate         DateTime
+  numDays         Decimal   @db.Decimal(5, 2) // số ngày (có thể 0.5 cho nửa ngày)
+  reason          String?
+  status          String    @default("pending") // "pending", "approved", "rejected", "cancelled"
+  approvedBy      String?
+  approvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId, startDate, endDate])
+  @@map("leaves")
+}
+
+model LeaveQuota {
+  id              String    @id @default(cuid())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  year            Int
+  leaveType       String    @db.VarChar(50) // "paid", "unpaid", "sick", etc.
+  totalDays       Decimal   @db.Decimal(5, 2) // hạn mức năm
+  usedDays        Decimal   @db.Decimal(5, 2) // đã dùng
+  carryover       Decimal   @default(0) @db.Decimal(5, 2) // số dư từ năm trước
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, year, leaveType])
+  @@map("leave_quotas")
+}
+
+model LeaveBalance {
+  id              String    @id @default(cuid())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  year            Int
+  month           Int
+  leaveType       String    @db.VarChar(50) // "paid", "unpaid", "sick", etc.
+  daysUsed        Decimal   @db.Decimal(5, 2)
+  daysRemaining   Decimal   @db.Decimal(5, 2)
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, year, month, leaveType])
+  @@map("leave_balances")
+}
+

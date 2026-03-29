@@ -52,8 +52,9 @@ export class ParticipationReportService {
 
       // Process each employee
       for (const emp of users) {
-        // Get standard hours
-        const stdHours = await this.attendance.getStandardHours(emp.id, year, month);
+        // Get standard hours (after subtracting leave)
+        const leaveStats = await this.attendance.calculateStandardWorkHours(emp.id, year, month);
+        const stdHours = leaveStats.standardWorkHours;
 
         // Get employee hours (logged from Jira or manual entry)
         const empHours = await this.prisma.employeeHours.findUnique({
@@ -89,14 +90,14 @@ export class ParticipationReportService {
         }
 
         // Calculate self-learning
-        const selfLearningHours = Math.max(0, stdHours.standardHours - totalProjectHours);
+        const selfLearningHours = Math.max(0, leaveStats.standardWorkHours - totalProjectHours);
         const projectPercent =
-          stdHours.standardHours > 0
-            ? Math.round((totalProjectHours / stdHours.standardHours) * 10000) / 100
+          leaveStats.standardWorkHours > 0
+            ? Math.round((totalProjectHours / leaveStats.standardWorkHours) * 10000) / 100
             : 0;
         const selfLearningPercent =
-          stdHours.standardHours > 0
-            ? Math.round((selfLearningHours / stdHours.standardHours) * 10000) / 100
+          leaveStats.standardWorkHours > 0
+            ? Math.round((selfLearningHours / leaveStats.standardWorkHours) * 10000) / 100
             : 0;
 
         // Check alert
@@ -113,7 +114,7 @@ export class ParticipationReportService {
         const row: ParticipationRow = {
           employeeId: emp.id,
           employeeName: emp.name,
-          standardHours: stdHours.standardHours,
+          standardHours: leaveStats.standardWorkHours,
           projectHours: Math.round(totalProjectHours * 100) / 100,
           selfLearningHours: Math.round(selfLearningHours * 100) / 100,
           projectPercent,
@@ -123,7 +124,7 @@ export class ParticipationReportService {
             projectCode: p.code,
             projectName: p.name,
             hours: Math.round(p.hours * 100) / 100,
-            percent: Math.round((p.hours / stdHours.standardHours) * 10000) / 100,
+            percent: Math.round((p.hours / leaveStats.standardWorkHours) * 10000) / 100,
           })),
         };
 

@@ -8,8 +8,12 @@ async function main() {
   // Clear existing data
   await prisma.botLog.deleteMany();
   await prisma.chatLog.deleteMany();
+  await prisma.leaveBalance.deleteMany();
+  await prisma.leave.deleteMany();
+  await prisma.leaveQuota.deleteMany();
   await prisma.phieuChi.deleteMany();
   await prisma.voucher.deleteMany();
+  await prisma.projectParticipation.deleteMany();
   await prisma.employeeHours.deleteMany();
   await prisma.project.deleteMany();
   await prisma.user.deleteMany();
@@ -165,6 +169,100 @@ async function main() {
     },
   });
 
+  // Create leave quotas (12 days paid leave/year for each employee)
+  await prisma.leaveQuota.create({
+    data: {
+      userId: emp1.id,
+      year: 2026,
+      leaveType: 'paid',
+      totalDays: '12',
+      usedDays: '2',
+    },
+  });
+
+  await prisma.leaveQuota.create({
+    data: {
+      userId: emp2.id,
+      year: 2026,
+      leaveType: 'paid',
+      totalDays: '12',
+      usedDays: '0',
+    },
+  });
+
+  await prisma.leaveQuota.create({
+    data: {
+      userId: emp3.id,
+      year: 2026,
+      leaveType: 'paid',
+      totalDays: '12',
+      usedDays: '5',
+    },
+  });
+
+  // Create sample leaves
+  await prisma.leave.create({
+    data: {
+      userId: emp1.id,
+      leaveType: 'paid',
+      startDate: new Date('2026-03-09'),
+      endDate: new Date('2026-03-10'),
+      numDays: '2',
+      reason: 'Personal leave',
+      status: 'approved',
+      approvedAt: new Date(),
+    },
+  });
+
+  await prisma.leave.create({
+    data: {
+      userId: emp3.id,
+      leaveType: 'sick',
+      startDate: new Date('2026-03-15'),
+      endDate: new Date('2026-03-17'),
+      numDays: '2.5',
+      reason: 'Illness',
+      status: 'approved',
+      approvedAt: new Date(),
+    },
+  });
+
+  await prisma.leave.create({
+    data: {
+      userId: emp3.id,
+      leaveType: 'unpaid',
+      startDate: new Date('2026-03-20'),
+      endDate: new Date('2026-03-22'),
+      numDays: '2.5',
+      reason: 'Urgent personal matter',
+      status: 'approved',
+      approvedAt: new Date(),
+    },
+  });
+
+  // Create leave balances
+  await prisma.leaveBalance.create({
+    data: {
+      userId: emp1.id,
+      year: 2026,
+      month: 3,
+      leaveType: 'paid',
+      daysUsed: '2',
+      daysRemaining: '10',
+    },
+  });
+
+  await prisma.leaveBalance.create({
+    data: {
+      userId: emp3.id,
+      year: 2026,
+      month: 3,
+      leaveType: 'sick',
+      daysUsed: '2.5',
+      daysRemaining: '5.5',
+    },
+  });
+
   // Create bot logs
   await prisma.botLog.create({
     data: {
@@ -200,6 +298,9 @@ async function main() {
   console.log(`- Vouchers: 2 (1 draft, 1 approved)`);
   console.log(`- PhieuChi: 1 (from approved voucher)`);
   console.log(`- Employee Hours: 3 (participation data)`);
+  console.log(`- Leave Quotas: 3 (paid leave: 12 days/year)`);
+  console.log(`- Leaves: 3 (2 paid, 2.5 sick, 2.5 unpaid)`);
+  console.log(`- Leave Balances: 2 (tracking March 2026)`);
   console.log(`- Telegram ID: 5377791753 (can test as emp1)`);
 }
 
