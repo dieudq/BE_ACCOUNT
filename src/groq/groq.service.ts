@@ -15,9 +15,10 @@ export class GroqService {
 
   async chat(message: string, context?: string): Promise<string> {
     try {
+      const plainTextInstruction = 'Always respond with plain text, NO markdown, NO ** symbols, NO formatting codes.';
       const fullMessage = context 
-        ? `Context: ${context}\n\nUser: ${message}` 
-        : message;
+        ? `${plainTextInstruction}\n\nContext: ${context}\n\nUser: ${message}` 
+        : `${plainTextInstruction}\n\nUser: ${message}`;
 
       const response = await this.client.chat.completions.create({
         model: 'llama-3.3-70b-versatile',
@@ -31,7 +32,14 @@ export class GroqService {
         temperature: 0.7,
       });
 
-      return response.choices[0]?.message?.content || 'No response';
+      const content = response.choices[0]?.message?.content || 'No response';
+      
+      // Strip markdown if Groq still returns it
+      return content
+        .replace(/\*\*/g, '')
+        .replace(/\*\*/g, '')
+        .replace(/^#+\s/gm, '')
+        .replace(/^-\s/gm, '• ');
     } catch (error) {
       throw new Error(`Groq error: ${error.message}`);
     }

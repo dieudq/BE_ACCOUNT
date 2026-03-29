@@ -125,7 +125,7 @@ Nếu không phải voucher, trả lời:
         requiresConfirmation: true,
         confirmationId: requestId,
         voucherData,
-        message: `✅ Xác nhận tạo voucher:\n📌 Số tiền: ${parsed.amount.toLocaleString('vi-VN')} VND\n📝 Lý do: ${parsed.reason}\n\nGửi "YES ${requestId}" để xác nhận hoặc "NO" để hủy.`,
+        message: `✅ Xác nhận tạo voucher:\n\n📌 Số tiền: ${parsed.amount.toLocaleString('vi-VN')} VND\n📝 Lý do: ${parsed.reason}\n\n👉 Gửi "YES ${requestId}" để xác nhận\n👉 Gửi "NO" để hủy`,
       };
     } catch (error) {
       console.error('Error parsing voucher intent:', error);
