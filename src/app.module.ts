@@ -5,7 +5,7 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { VouchersModule as LegacyVouchersModule } from './modules/vouchers/vouchers.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
-import { GroqModule } from './groq/groq.module';
+import { LLMGatewayModule } from './llm-gateway/llm-gateway.module';
 import { ChatModule } from './chat/chat.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { PoliciesModule } from './policies/policies.module';
@@ -21,7 +21,7 @@ import { SyncModule } from './sync/sync.module';
     PrismaModule,
     LegacyVouchersModule,
     WebhooksModule,
-    GroqModule,
+    LLMGatewayModule,
     ChatModule,
     TelegramModule,
     PoliciesModule,

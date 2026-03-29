@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { GroqService } from '../groq/groq.service';
+import { LLMGatewayService } from '../llm-gateway/llm-gateway.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ChatService {
   constructor(
-    private groq: GroqService,
+    private llmGateway: LLMGatewayService,
     private prisma: PrismaService,
   ) {}
 
@@ -73,8 +73,8 @@ export class ChatService {
         },
       };
 
-      // Query Groq with real data
-      const response = await this.groq.analyze(context, message);
+      // Query LLM Gateway with real data
+      const response = await this.llmGateway.analyze(context, message);
       return response;
     } catch (error) {
       console.error('Chat error:', error);

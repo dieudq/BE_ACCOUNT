@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { GroqService } from '../groq/groq.service';
+import { LLMGatewayService } from '../llm-gateway/llm-gateway.service';
 
 interface ApprovalState {
   voucherId: string;
@@ -16,7 +16,7 @@ interface ApprovalState {
 export class ApprovalWorkflowService {
   private pendingApprovals = new Map<string, ApprovalState>();
 
-  constructor(private prisma: PrismaService, private groq: GroqService) {}
+  constructor(private prisma: PrismaService, private llmGateway: LLMGatewayService) {}
 
   /**
    * Get all pending vouchers for accountant review

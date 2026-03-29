@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { GroqService } from '../groq/groq.service';
+import { LLMGatewayService } from '../llm-gateway/llm-gateway.service';
 
 interface VoucherDraftRequest {
   userId: string;
@@ -24,7 +24,7 @@ export class VoucherAutomationService {
   // Store pending confirmations (in-memory, can upgrade to Redis)
   private pendingConfirmations = new Map<string, ConfirmationState>();
 
-  constructor(private prisma: PrismaService, private groq: GroqService) {}
+  constructor(private prisma: PrismaService, private llmGateway: LLMGatewayService) {}
 
   /**
    * Step 1: Parse Telegram intent → Create voucher draft
@@ -60,7 +60,7 @@ Nếu không phải voucher, trả lời:
 }
 `;
 
-      const response = await this.groq.chat(message, systemPrompt);
+      const response = await this.llmGateway.chat(message, systemPrompt);
 
       let parsed;
       try {
