@@ -5,7 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="4a985f80-bf31-42dd-9e1d-6395c794e084" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/prisma/schema.prisma" beforeDir="false" afterPath="$PROJECT_DIR$/prisma/schema.prisma" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/approvals/approval-workflow.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/approvals/approval-workflow.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/reports/participation.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/reports/participation.service.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -74,7 +76,7 @@
       <workItem from="1774610006315" duration="1964000" />
       <workItem from="1774612235726" duration="7182000" />
       <workItem from="1774683594531" duration="1589000" />
-      <workItem from="1774762605390" duration="6022000" />
+      <workItem from="1774762605390" duration="7278000" />
     </task>
     <servers />
   </component>

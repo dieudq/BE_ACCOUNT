@@ -214,6 +214,15 @@ Trả lời:
         },
       });
 
+      // ✅ FIX R3: Lock source data after PhieuChi created
+      await this.prisma.voucher.update({
+        where: { id: approval.voucherId },
+        data: {
+          isLocked: true,
+          lockedAt: new Date(),
+        },
+      });
+
       // Log approval
       await this.prisma.botLog.create({
         data: {
@@ -224,6 +233,7 @@ Trả lời:
             approvalId: requestId,
             phieuChiId: phieuChi.id,
             amount: approval.voucherData.amount,
+            locked: true,
           },
         },
       });

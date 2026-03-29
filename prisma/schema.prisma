@@ -62,13 +62,16 @@ model Voucher {
   erpId           String?
   status          String    @default("pending")
   approvalLevel   Int       @default(0)
+  isLocked        Boolean   @default(false) // R3: Lock after PhieuChi created
   createdAt       DateTime  @default(now())
   approvedAt      DateTime?
   paidAt          DateTime?
+  lockedAt        DateTime?
   updatedAt       DateTime  @updatedAt
 
   phieuChi PhieuChi?
   botLogs BotLog[]
+  approvals Approval[]
 
   @@map("vouchers")
 }
@@ -85,6 +88,20 @@ model PhieuChi {
   updatedAt       DateTime  @updatedAt
 
   @@map("phieu_chi")
+}
+
+model Approval {
+  id              String    @id @default(cuid())
+  voucher         Voucher   @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  voucherId       String
+  approvedBy      String?
+  status          String    @default("pending") // pending, approved, rejected
+  rejectionReason String?
+  approvedAt      DateTime?
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+
+  @@map("approvals")
 }
 
 model EmployeeHours {
@@ -357,6 +374,8 @@ model FinancialReport {
   
   jsonData        Json // Store report structure as JSON
   filePath        String? // Path to PDF/Excel
+  
+  visibility      String    @default("internal") // "internal" (quản trị), "public" (công bố)
   
   createdBy       String?
   approvedBy      String?

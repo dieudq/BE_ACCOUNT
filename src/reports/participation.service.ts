@@ -44,7 +44,7 @@ export class ParticipationReportService {
         where: {
           role: { in: ['employee', 'manager'] },
         },
-        select: { id: true, name: true },
+        select: { id: true, name: true, joinDate: true },
       });
 
       const rows: ParticipationRow[] = [];
@@ -52,9 +52,28 @@ export class ParticipationReportService {
 
       // Process each employee
       for (const emp of users) {
+        // ✅ FIX P4: Calculate standard hours considering join date
+        const periodStart = new Date(year, month - 1, 1);
+        const periodEnd = new Date(year, month, 0);
+        
+        let adjustedStdHours = 160; // Default: full month
+        if (emp.joinDate) {
+          const joinDate = new Date(emp.joinDate);
+          if (joinDate > periodStart && joinDate <= periodEnd) {
+            // Employee joined within this month
+            const daysWorked = Math.ceil(
+              (periodEnd.getTime() - joinDate.getTime()) / (1000 * 60 * 60 * 24),
+            );
+            const totalDaysInMonth = Math.ceil(
+              (periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24),
+            );
+            adjustedStdHours = Math.round((160 * daysWorked) / totalDaysInMonth);
+          }
+        }
+
         // Get standard hours (after subtracting leave)
         const leaveStats = await this.attendance.calculateStandardWorkHours(emp.id, year, month);
-        const stdHours = leaveStats.standardWorkHours;
+        const stdHours = Math.min(leaveStats.standardWorkHours, adjustedStdHours); // Use lower value
 
         // Get employee hours (logged from Jira or manual entry)
         const empHours = await this.prisma.employeeHours.findUnique({
