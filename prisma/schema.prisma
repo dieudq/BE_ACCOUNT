@@ -211,3 +211,199 @@ model LeaveBalance {
   @@map("leave_balances")
 }
 
+// ============ FINANCIAL MODELS ============
+
+model FinancialPeriod {
+  id              String    @id @default(cuid())
+  code            String    @unique @db.VarChar(50) // "2026-03", "Q1-2026"
+  description     String?
+  startDate       DateTime
+  endDate         DateTime
+  status          String    @default("open") // "open", "closed", "locked"
+  isClosed        Boolean   @default(false)
+  fiscalYear      Int
+  fiscalMonth     Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  journalEntries JournalEntry[]
+  generalLedgers GeneralLedger[]
+  trialBalances  TrialBalance[]
+  financialReports FinancialReport[]
+  
+  @@unique([fiscalYear, fiscalMonth])
+  @@map("financial_periods")
+}
+
+model GLAccount {
+  id              String    @id @default(cuid())
+  accountCode     String    @unique @db.VarChar(50) // "1001", "5001"
+  accountName     String
+  accountType     String    @db.VarChar(50) // "asset", "liability", "equity", "income", "expense"
+  description     String?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  journalEntries_debit JournalEntry[] @relation("debit")
+  journalEntries_credit JournalEntry[] @relation("credit")
+  generalLedgers GeneralLedger[]
+  trialBalances TrialBalance[]
+  
+  @@index([accountCode, accountType])
+  @@map("gl_accounts")
+}
+
+model CostCenter {
+  id              String    @id @default(cuid())
+  code            String    @unique @db.VarChar(50) // "CC001", "SALES"
+  name            String
+  description     String?
+  departmentId    String?
+  budget          Decimal   @db.Decimal(15, 2)
+  budgetYear      Int
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  journalEntries JournalEntry[]
+  
+  @@unique([code, budgetYear])
+  @@map("cost_centers")
+}
+
+model JournalEntry {
+  id              String    @id @default(cuid())
+  period          FinancialPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  periodId        String
+  entryNumber     String    @db.VarChar(50) // "JE-2026-03-001"
+  entryDate       DateTime
+  description     String
+  
+  // Debit side
+  debitAccount    GLAccount @relation("debit", fields: [debitAccountId], references: [id])
+  debitAccountId  String
+  debitAmount     Decimal   @db.Decimal(15, 2)
+  
+  // Credit side
+  creditAccount   GLAccount @relation("credit", fields: [creditAccountId], references: [id])
+  creditAccountId String
+  creditAmount    Decimal   @db.Decimal(15, 2)
+  
+  // References
+  costCenter      CostCenter? @relation(fields: [costCenterId], references: [id])
+  costCenterId    String?
+  voucherId       String? // Link to source voucher
+  reference       String? // "VCH-001", "EXP-123"
+  
+  // Approval flow
+  createdBy       String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  status          String    @default("pending") // "pending", "approved", "posted", "reversed"
+  
+  createdAt       DateTime  @default(now())
+  reversedAt      DateTime?
+  
+  @@unique([entryNumber, periodId])
+  @@index([periodId, entryDate, status])
+  @@map("journal_entries")
+}
+
+model GeneralLedger {
+  id              String    @id @default(cuid())
+  account         GLAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  accountId       String
+  period          FinancialPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  periodId        String
+  
+  openingBalance  Decimal   @db.Decimal(15, 2) @default(0)
+  debitAmount     Decimal   @db.Decimal(15, 2) @default(0)
+  creditAmount    Decimal   @db.Decimal(15, 2) @default(0)
+  closingBalance  Decimal   @db.Decimal(15, 2) @default(0)
+  
+  lastUpdated     DateTime  @updatedAt
+  
+  @@unique([accountId, periodId])
+  @@map("general_ledgers")
+}
+
+model TrialBalance {
+  id              String    @id @default(cuid())
+  period          FinancialPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  periodId        String
+  account         GLAccount @relation(fields: [accountId], references: [id])
+  accountId       String
+  
+  debitBalance    Decimal   @db.Decimal(15, 2) @default(0)
+  creditBalance   Decimal   @db.Decimal(15, 2) @default(0)
+  
+  // For variance tracking
+  variance        Decimal   @db.Decimal(15, 2) @default(0)
+  variancePercent Decimal   @db.Decimal(8, 2) @default(0)
+  
+  generatedAt     DateTime  @default(now())
+  
+  @@unique([periodId, accountId])
+  @@map("trial_balances")
+}
+
+model FinancialReport {
+  id              String    @id @default(cuid())
+  period          FinancialPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  periodId        String
+  reportType      String    @db.VarChar(50) // "income_statement", "balance_sheet", "cash_flow"
+  reportDate      DateTime
+  
+  jsonData        Json // Store report structure as JSON
+  filePath        String? // Path to PDF/Excel
+  
+  createdBy       String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  publishedAt     DateTime?
+  status          String    @default("draft") // "draft", "approved", "published"
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([periodId, reportType])
+  @@map("financial_reports")
+}
+
+model AccountMapping {
+  id              String    @id @default(cuid())
+  reportLineItem  String    @db.VarChar(100) // "Total Assets", "Gross Revenue"
+  glAccounts      String[] @db.VarChar(50) // Array of GL account codes to sum
+  
+  version         Int    @default(1)
+  isActive        Boolean @default(true)
+  approvedBy      String?
+  approvedAt      DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([reportLineItem, version])
+  @@map("account_mappings")
+}
+
+// ============ AUDIT & COMPLIANCE ============
+
+model AuditLog {
+  id              String    @id @default(cuid())
+  entityType      String    @db.VarChar(50) // "Voucher", "JournalEntry", "Period"
+  entityId        String
+  action          String    @db.VarChar(50) // "create", "update", "delete", "approve", "post"
+  
+  changedBy       String?
+  oldValues       Json?
+  newValues       Json?
+  reason          String?
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([entityType, entityId, createdAt])
+  @@map("audit_logs")
+}
+
