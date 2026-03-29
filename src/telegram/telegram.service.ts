@@ -119,13 +119,13 @@ export class TelegramService implements OnModuleInit {
       // PHASE 4: Voucher list command
       if (message.toUpperCase() === 'LIST' || message.toUpperCase() === '/LIST') {
         const pending = await this.approvalWorkflow.getPendingVouchers(user.id);
-        if (pending.vouchers.length === 0) {
+        if (!pending.success || pending.vouchers.length === 0) {
           await this.bot.sendMessage(chatId, '✅ Không có voucher nào chờ duyệt');
           return;
         }
 
         let response = `📋 **${pending.count} Voucher chờ duyệt:**\n\n`;
-        pending.vouchers.forEach((v, i) => {
+        (pending.vouchers as any[]).forEach((v: any, i: number) => {
           response += `${i + 1}. ${v.number}\n   💰 ${v.amount.toLocaleString('vi-VN')} VND\n   📝 ${v.reason}\n   👤 ${v.requestedBy}\n\n`;
         });
         response += `Gửi: REVIEW <voucherId> để xem chi tiết\n`;
