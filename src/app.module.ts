@@ -13,6 +13,7 @@ import { AgentModule } from './agent/agent.module';
 import { ReportsModule } from './reports/reports.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { ApprovalsModule } from './approvals/approvals.module';
+import { SyncModule } from './sync/sync.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ApprovalsModule } from './approvals/approvals.module';
     ReportsModule,
     SchedulerModule,
     ApprovalsModule,
+    SyncModule,
   ],
   controllers: [AppController],
   providers: [AppService],
