@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VoucherAutomationService } from '../vouchers/voucher-automation.service';
+import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
 import TelegramBot from 'node-telegram-bot-api';
 import axios from 'axios';
 
@@ -15,6 +16,7 @@ export class TelegramService implements OnModuleInit {
     private chat: ChatService,
     private prisma: PrismaService,
     private voucherAutomation: VoucherAutomationService,
+    private approvalWorkflow: ApprovalWorkflowService,
   ) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
@@ -93,7 +95,58 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
-      // Phase 3: Check if message is voucher confirmation
+      // PHASE 4: Approval commands
+      if (message.startsWith('APPROVE ')) {
+        const requestId = message.substring(8).trim();
+        const result = await this.approvalWorkflow.approveVoucher(userIdForQuery, requestId);
+        await this.bot.sendMessage(chatId, result.message);
+        return;
+      }
+
+      if (message.startsWith('REJECT ')) {
+        const parts = message.substring(7).trim().split(' ');
+        const requestId = parts[0];
+        const reason = parts.slice(1).join(' ') || 'No reason provided';
+        const result = await this.approvalWorkflow.rejectVoucher(
+          userIdForQuery,
+          requestId,
+          reason,
+        );
+        await this.bot.sendMessage(chatId, result.message);
+        return;
+      }
+
+      // PHASE 4: Voucher list command
+      if (message.toUpperCase() === 'LIST' || message.toUpperCase() === '/LIST') {
+        const pending = await this.approvalWorkflow.getPendingVouchers(user.id);
+        if (pending.vouchers.length === 0) {
+          await this.bot.sendMessage(chatId, '✅ Không có voucher nào chờ duyệt');
+          return;
+        }
+
+        let response = `📋 **${pending.count} Voucher chờ duyệt:**\n\n`;
+        pending.vouchers.forEach((v, i) => {
+          response += `${i + 1}. ${v.number}\n   💰 ${v.amount.toLocaleString('vi-VN')} VND\n   📝 ${v.reason}\n   👤 ${v.requestedBy}\n\n`;
+        });
+        response += `Gửi: REVIEW <voucherId> để xem chi tiết\n`;
+
+        await this.bot.sendMessage(chatId, response);
+        return;
+      }
+
+      // PHASE 4: Review voucher command
+      if (message.startsWith('REVIEW ')) {
+        const voucherId = message.substring(7).trim();
+        const result = await this.approvalWorkflow.requestVoucherForReview(userIdForQuery, voucherId);
+        if (result.success) {
+          await this.bot.sendMessage(chatId, result.message);
+        } else {
+          await this.bot.sendMessage(chatId, result.message);
+        }
+        return;
+      }
+
+      // PHASE 3: Check if message is voucher confirmation
       if (message.startsWith('YES ')) {
         const confirmationId = message.substring(4).trim();
         const result = await this.voucherAutomation.confirmVoucher(userIdForQuery, confirmationId);
@@ -113,7 +166,7 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
-      // Phase 3: Parse voucher intent
+      // PHASE 3: Parse voucher intent
       const voucherResult = await this.voucherAutomation.parseVoucherIntent(userIdForQuery, message);
       
       if (voucherResult.requiresConfirmation) {

@@ -3,7 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
-import { VouchersModule } from './modules/vouchers/vouchers.module';
+import { VouchersModule as LegacyVouchersModule } from './modules/vouchers/vouchers.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { GroqModule } from './groq/groq.module';
 import { ChatModule } from './chat/chat.module';
@@ -12,12 +12,13 @@ import { PoliciesModule } from './policies/policies.module';
 import { AgentModule } from './agent/agent.module';
 import { ReportsModule } from './reports/reports.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
+import { ApprovalsModule } from './approvals/approvals.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot(),
     PrismaModule,
-    VouchersModule,
+    LegacyVouchersModule,
     WebhooksModule,
     GroqModule,
     ChatModule,
@@ -26,6 +27,7 @@ import { SchedulerModule } from './scheduler/scheduler.module';
     AgentModule,
     ReportsModule,
     SchedulerModule,
+    ApprovalsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
