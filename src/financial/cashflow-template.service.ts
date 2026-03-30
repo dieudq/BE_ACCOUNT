@@ -6,22 +6,21 @@ import * as fs from 'fs';
 /**
  * Cashflow Template Service
  * LOGIC:
- * 1. Load template as REFERENCE (extract headers, structure, formatting only)
- * 2. Parse GL data, calculate totals
- * 3. CREATE NEW Excel workbook from scratch
- * 4. Populate new file with GL data using template structure
- * 5. Export completely new file
- * 
- * Key: Output file = NEW file, NOT edited template
+ * 1. Load template
+ * 2. COPY ENTIRE template (all 963 rows × 30 cols, all formatting)
+ * 3. Calculate GL totals
+ * 4. Find matching rows + columns
+ * 5. Fill GL data into specific cells ONLY
+ * 6. Export completely new file
  */
 @Injectable()
 export class CashflowTemplateService {
   private templateDir = path.join(process.cwd(), 'templates');
 
   /**
-   * Load template as reference (structure only)
+   * Load template
    */
-  async loadTemplateAsReference(): Promise<ExcelJS.Workbook> {
+  async loadTemplate(): Promise<ExcelJS.Workbook> {
     if (!fs.existsSync(this.templateDir)) {
       throw new Error('Templates directory not found');
     }
@@ -38,47 +37,8 @@ export class CashflowTemplateService {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(templateFile);
 
-    console.log(`✅ Template reference loaded: ${templates[0]}`);
+    console.log(`✅ Template loaded: ${templates[0]}`);
     return workbook;
-  }
-
-  /**
-   * Extract template reference structure (headers, columns, formatting)
-   */
-  extractTemplateStructure(template: ExcelJS.Workbook): {
-    sheetName: string;
-    headerRows: any[];
-    columnCount: number;
-  } {
-    const sourceSheet = template.getWorksheet('Cashflow_Misa');
-    if (!sourceSheet) {
-      throw new Error('Template sheet "Cashflow_Misa" not found');
-    }
-
-    console.log('📋 Extracting template structure...');
-
-    // Extract first 2 rows (headers + month names)
-    const headerRows: any[] = [];
-    for (let i = 1; i <= 2; i++) {
-      const row = sourceSheet.getRow(i);
-      const values: any[] = [];
-      for (let j = 1; j <= sourceSheet.columnCount; j++) {
-        values.push({
-          value: row.getCell(j).value,
-          font: row.getCell(j).font,
-          fill: row.getCell(j).fill,
-          alignment: row.getCell(j).alignment,
-          border: row.getCell(j).border,
-        });
-      }
-      headerRows.push(values);
-    }
-
-    return {
-      sheetName: sourceSheet.name,
-      headerRows,
-      columnCount: sourceSheet.columnCount,
-    };
   }
 
   /**
@@ -128,64 +88,132 @@ export class CashflowTemplateService {
   }
 
   /**
-   * Create NEW workbook (not copy of template)
-   * Use template structure as reference only
-   * Populate with GL data
+   * Copy entire template to new workbook
+   * Preserves ALL structure: all 963 rows, all 30 columns, all formatting
    */
-  async createNewFileWithGLData(
-    templateRef: ExcelJS.Workbook,
-    categoryTotals: Map<string, number>,
-    month: number,
+  async copyTemplateStructure(
+    sourceTemplate: ExcelJS.Workbook,
   ): Promise<ExcelJS.Workbook> {
-    console.log('\n📝 Creating NEW Cashflow file from GL data...');
+    console.log('\n📋 Copying full template structure...');
 
-    // Extract template structure
-    const templateStruct = this.extractTemplateStructure(templateRef);
-
-    // Create NEW workbook
     const newWorkbook = new ExcelJS.Workbook();
-    const newSheet = newWorkbook.addWorksheet(templateStruct.sheetName);
+    const sourceSheet = sourceTemplate.getWorksheet('Cashflow_Misa');
 
-    // Copy headers from template
-    console.log('📋 Copying headers...');
-    templateStruct.headerRows.forEach((headerRow, rowIdx) => {
-      const newRow = newSheet.getRow(rowIdx + 1);
-      headerRow.forEach((cell, colIdx) => {
-        const newCell = newRow.getCell(colIdx + 1);
-        newCell.value = cell.value;
-        if (cell.font) newCell.font = { ...cell.font };
-        if (cell.fill) newCell.fill = { ...cell.fill };
-        if (cell.alignment) newCell.alignment = { ...cell.alignment };
-        if (cell.border) newCell.border = { ...cell.border };
-      });
+    if (!sourceSheet) {
+      throw new Error('Template sheet "Cashflow_Misa" not found');
+    }
+
+    // Create new sheet in new workbook
+    const newSheet = newWorkbook.addWorksheet(sourceSheet.name);
+
+    console.log(`   Copying ${sourceSheet.rowCount} rows × ${sourceSheet.columnCount} columns...`);
+
+    // Set column widths
+    for (let colIdx = 1; colIdx <= sourceSheet.columnCount; colIdx++) {
+      const sourceCol = sourceSheet.getColumn(colIdx);
+      const newCol = newSheet.getColumn(colIdx);
+      if (sourceCol.width) {
+        newCol.width = sourceCol.width;
+      }
+    }
+
+    // Copy all rows with formatting
+    sourceSheet.eachRow((sourceRow, rowNumber) => {
+      const newRow = newSheet.getRow(rowNumber);
+
+      // Copy row height
+      if (sourceRow.height) {
+        newRow.height = sourceRow.height;
+      }
+
+      // Copy all cells in row
+      for (let colIdx = 1; colIdx <= sourceSheet.columnCount; colIdx++) {
+        const sourceCell = sourceRow.getCell(colIdx);
+        const newCell = newRow.getCell(colIdx);
+
+        // Copy value
+        newCell.value = sourceCell.value;
+
+        // Copy formatting
+        if (sourceCell.font) {
+          newCell.font = { ...sourceCell.font };
+        }
+        if (sourceCell.fill) {
+          newCell.fill = { ...sourceCell.fill };
+        }
+        if (sourceCell.alignment) {
+          newCell.alignment = { ...sourceCell.alignment };
+        }
+        if (sourceCell.border) {
+          newCell.border = { ...sourceCell.border };
+        }
+        if (sourceCell.numFmt) {
+          newCell.numFmt = sourceCell.numFmt;
+        }
+      }
     });
 
-    // Month column index: Mar = columns I & J (9 & 10)
-    const monthColIndex = 3 + month * 2; // Formula for month-based column
-
-    console.log(
-      `\n📊 Populating GL data at column ${String.fromCharCode(64 + monthColIndex)}...`,
-    );
-
-    // Add GL data rows (starting from row 3)
-    let rowNum = 3;
-    categoryTotals.forEach((value, category) => {
-      const row = newSheet.getRow(rowNum);
-      row.getCell(2).value = category; // Column B: Category name
-      row.getCell(monthColIndex).value = value; // Month column: GL value
-      row.getCell(monthColIndex).numFmt = '#,##0';
-      console.log(
-        `   R${rowNum}C${monthColIndex}: "${category}" = ${value.toLocaleString('vi-VN')}`,
-      );
-      rowNum++;
-    });
-
-    console.log('\n✅ New file created with GL data');
+    console.log('✅ Full template copied');
     return newWorkbook;
   }
 
   /**
-   * Export new file to Excel
+   * Fill GL data into copied template
+   * Month = 3 (March) → Columns I & J (9 & 10)
+   */
+  async fillGLDataIntoTemplate(
+    workbook: ExcelJS.Workbook,
+    categoryTotals: Map<string, number>,
+    month: number,
+  ): Promise<ExcelJS.Workbook> {
+    const worksheet = workbook.getWorksheet('Cashflow_Misa');
+    if (!worksheet) {
+      throw new Error('Worksheet "Cashflow_Misa" not found');
+    }
+
+    console.log(`\n📍 Filling GL data for month ${month}...`);
+
+    // Month column mapping (pairs for Actual/Plan)
+    // E=5 for month 1, G=7 for month 2, I=9 for month 3, etc.
+    const monthColIndex = 3 + month * 2;
+    console.log(
+      `   Target column: ${String.fromCharCode(64 + monthColIndex)} (index ${monthColIndex})`,
+    );
+
+    let updatedCount = 0;
+
+    // Map each category to its template row
+    categoryTotals.forEach((value, category) => {
+      // Find row with this category name in Column B
+      let found = false;
+      worksheet.eachRow((row, rowNumber) => {
+        const cellB = row.getCell(2).value; // Column B
+        if (cellB && String(cellB).includes(category)) {
+          // Fill column with GL value
+          const cell = row.getCell(monthColIndex);
+          cell.value = value;
+          cell.numFmt = '#,##0';
+          updatedCount++;
+          console.log(
+            `   ✓ R${rowNumber}C${monthColIndex}: "${category}" = ${value.toLocaleString(
+              'vi-VN',
+            )}`,
+          );
+          found = true;
+        }
+      });
+
+      if (!found) {
+        console.log(`   ⚠️  Category "${category}" not found in template`);
+      }
+    });
+
+    console.log(`✅ Updated ${updatedCount} cells with GL data`);
+    return workbook;
+  }
+
+  /**
+   * Export file to Excel
    */
   async exportToExcel(
     workbook: ExcelJS.Workbook,
@@ -202,7 +230,7 @@ export class CashflowTemplateService {
     }
 
     await workbook.xlsx.writeFile(outPath);
-    console.log(`✅ Exported new file: ${outPath}`);
+    console.log(`✅ Exported: ${outPath}`);
     return outPath;
   }
 }
