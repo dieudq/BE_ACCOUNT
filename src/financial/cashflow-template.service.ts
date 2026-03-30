@@ -48,21 +48,8 @@ export class CashflowTemplateService {
 
   /**
    * Create NEW minimal workbook with ONLY top-level category rows
-   * (Do NOT copy entire template - that causes formula/sub-row mess)
-   * 
-   * Top-level rows (no sub-rows):
-   * R6: Thu dự án
-   * R10: Thu đầu tư tài chính, tiết kiệm
-   * R11: Thu đầu tư R&D
-   * R12: Thu khác
-   * R17: Lương dự án
-   * R23: Quản lý văn phòng
-   * R28: Chi phí đảm bảo chất lượng
-   * R31: Hành chính/ Nhân Sự
-   * R34: Kế toán/Tài Chính
-   * R37: Sales
-   * R44: Marketing
-   * R49: Hạ tầng IT
+   * DO NOT copy headers from template (they have shared formulas)
+   * Create fresh headers instead
    */
   async createMinimalCashflowWorkbook(
     templateRef: ExcelJS.Workbook,
@@ -78,32 +65,17 @@ export class CashflowTemplateService {
 
     console.log('🔧 Creating minimal Cashflow workbook with top-level categories...');
 
-    // Copy headers (rows 1-3)
-    for (let r = 1; r <= 3; r++) {
-      const srcRow = templateWs.getRow(r);
-      const dstRow = newWs.getRow(r);
-
-      for (let c = 1; c <= 30; c++) {
-        const srcCell = srcRow.getCell(c);
-        const dstCell = dstRow.getCell(c);
-
-        // Copy TEXT only, NOT formulas (avoid shared formula errors)
-        const srcValue = srcCell.value;
-        if (srcValue && typeof srcValue === 'object' && 'formula' in srcValue) {
-          // Skip formulas, copy text instead
-          dstCell.value = srcCell.text || '';
-        } else {
-          dstCell.value = srcValue;
-        }
-        
-        if (srcCell.font) dstCell.font = { ...srcCell.font };
-        if (srcCell.fill) dstCell.fill = { ...srcCell.fill };
-        if (srcCell.alignment) dstCell.alignment = { ...srcCell.alignment };
-        if (srcCell.border) dstCell.border = { ...srcCell.border };
-      }
-    }
-
-    console.log('   ✓ Headers copied (rows 1-3)');
+    // Create fresh headers (row 1-2) WITHOUT copying formulas
+    // Just put month names + "Actual" placeholder
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    newWs.getRow(1).values = ['', '', '', '', ...months.flatMap(m => [m, 'Plan'])];
+    newWs.getRow(2).values = ['', '', '', '', ...Array(24).fill('').flatMap((_, i) => {
+      const monthIdx = Math.floor(i / 2);
+      return [i % 2 === 0 ? 'Actual' : 'Plan'];
+    })];
+    
+    console.log('   ✓ Fresh headers created (rows 1-2)');
 
     // TOP-LEVEL category rows (confirmed mapping)
     const topLevelRows = [
@@ -121,28 +93,41 @@ export class CashflowTemplateService {
       { src: 49, name: 'Hạ tầng IT' },
     ];
 
-    let destRow = 4;
+    let destRow = 3;
     for (const item of topLevelRows) {
       const srcRow = templateWs.getRow(item.src);
       const dstRow = newWs.getRow(destRow);
 
-      for (let c = 1; c <= 30; c++) {
+      // Copy ONLY text values (column A, B, C)
+      // Skip all formulas
+      for (let c = 1; c <= 3; c++) {
         const srcCell = srcRow.getCell(c);
         const dstCell = dstRow.getCell(c);
 
-        // Copy TEXT only, NOT formulas (avoid shared formula errors)
-        const srcValue = srcCell.value;
-        if (srcValue && typeof srcValue === 'object' && 'formula' in srcValue) {
-          // Skip formulas, copy text instead
-          dstCell.value = srcCell.text || '';
+        // Get raw value - if it's a formula, get the text display value instead
+        let value = srcCell.value;
+        
+        if (value && typeof value === 'object' && 'formula' in value) {
+          // It's a formula - skip it, use text or category name
+          if (c === 2) {
+            // Column B = category name
+            dstCell.value = item.name;
+          } else {
+            dstCell.value = srcCell.text || '';
+          }
         } else {
-          dstCell.value = srcValue;
+          // Regular value
+          if (c === 2) {
+            dstCell.value = item.name;
+          } else {
+            dstCell.value = value;
+          }
         }
 
+        // Copy basic formatting
         if (srcCell.font) dstCell.font = { ...srcCell.font };
         if (srcCell.fill) dstCell.fill = { ...srcCell.fill };
         if (srcCell.alignment) dstCell.alignment = { ...srcCell.alignment };
-        if (srcCell.border) dstCell.border = { ...srcCell.border };
       }
 
       console.log(`   ✓ Row ${item.src} → Row ${destRow}: ${item.name}`);
