@@ -1,0 +1,56 @@
+✅ MAPPING VERIFICATION:
+
+Thu dự án:
+   ❌ 511.1: NOT FOUND IN DANH SÁCH
+   ❌ 511.2: NOT FOUND IN DANH SÁCH
+
+Thu đầu tư tài chính, tiết kiệm:
+   ✓ 515.3: Thu đầu tư tài chính, tiết kiệm
+
+Thu đầu tư R&D:
+   ✓ 515.5: Doanh thu đầu tư R&D
+
+Thu khác:
+   ✓ 515.2: Doanh thu hoạt động tài chính
+   ✓ 711.2: Thu hoàn lương, cp gửi xe chi hộ, hoàn mua hộ cho KH, hoàn tiền chi hộ cho ds đính kèm hoạt động NB
+
+Lương dự án:
+   ✓ 334.1: Lương nhân viên nội bộ
+   ✓ 334.2: Lương nhân viên thuê ngoài trực tiếp (freelancer)
+
+Quản lý bán hàng:
+   ✓ 6421.1: ISO
+   ✓ 6421.3: Lương NV Sales
+   ✓ 6421.4: Công cụ phục vụ Sales
+   ✓ 6421.5: Tiếp khách Sales
+   ✓ 6421.6: Công tác (sales)
+
+Quản lý văn phòng:
+   ❌ 6422.1: NOT FOUND IN DANH SÁCH
+   ✓ 6422.2: Dịch vụ/Điện/Nước/Gửi xe...
+   ✓ 6422.3: Chi phí mua sắm, phục vụ văn phòng cơ bản
+   ✓ 6422.4: Chi phí quản lý
+   ✓ 6422.5: Các chi phí hoạt động nội bộ
+   ✓ 6422.7: Chi phí xử lý thuế, các vấn đề về kế toán (nếu có)
+   ✓ 6422.8: BH Tự nguyện
+   ✓ 6422.9: Thưởng kế toán
+
+Chi phí đảm bảo chất lượng:
+   ✓ 154.1: CP NCTT
+   ✓ 154.2: CP Vendor
+   ✓ 154.3: Chi phí công tác, công cụ, sự kiện dành cho team dự án
+   ✓ 154.5: Chi phí đầu tư đào tạo nhân lực (cử đi đào tạo, học tiếng anh...)
+
+Hành chính/ Nhân Sự:
+   ✓ 6421.2: Lương/Thưởng cho bộ phận HCNS
+
+Kế toán/Tài Chính:
+   ✓ 6422.6: Lương bộ phận kế toán
+
+Sales:
+   ✓ 6421.7: Hội phí tham gia các tổ chức hiệp hội
+
+Marketing:
+   ✓ 6421.8: Công tác (team marketing)
+   ✓ 6421.9: Event marketing
+

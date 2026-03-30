@@ -197,10 +197,10 @@ export class CashflowTemplateService {
   }
 
   /**
-   * Fill GL data with category mapping
-   * For each month:
-   * - Sum GL by category
-   * - Fill into category row
+   * Fill GL data into template
+   * IMPORTANT: Only replace cells that = 0 (placeholders)
+   * Don't clear, don't create new workbook
+   * Just fill 0 → GL value in correct month column for matching categories
    */
   async fillGLDataWithCategoryMapping(
     workbook: ExcelJS.Workbook,
@@ -213,10 +213,10 @@ export class CashflowTemplateService {
       throw new Error('Worksheet not found');
     }
 
-    console.log('\n📍 Filling GL data into category rows...');
+    console.log('\n📍 Filling GL data (replace 0 only)...');
 
     glByMonth.forEach((records, month) => {
-      console.log(`\n   Month ${month}:`);
+      console.log(`\n   📅 Month ${month}:`);
 
       // Group by counter-account
       const accountTotals = new Map<string, { debit: number; credit: number }>();
@@ -252,37 +252,45 @@ export class CashflowTemplateService {
       const monthColIndex = 4 + month * 2;
       const colLetter = String.fromCharCode(64 + monthColIndex);
 
-      console.log(`   Fill column ${colLetter} (index ${monthColIndex})`);
+      console.log(`   Column ${colLetter} (index ${monthColIndex})`);
 
       let updateCount = 0;
       categoryTotals.forEach((value, category) => {
-        // Find row in new workbook by category name
+        // Find row in template by category name
         let found = false;
         worksheet.eachRow((row, rowNum) => {
           const cellB = row.getCell(2).value;
           if (cellB && String(cellB).trim() === category.trim()) {
             const cell = row.getCell(monthColIndex);
-            console.log(
-              `     ✓ R${rowNum}C${monthColIndex}: "${category}" = ${value.toLocaleString(
-                'vi-VN',
-              )}`,
-            );
-            cell.value = value;
-            cell.numFmt = '#,##0';
-            updateCount++;
+            
+            // ONLY fill if cell = 0 (placeholder)
+            if (cell.value === 0) {
+              console.log(
+                `     ✓ R${rowNum}C${monthColIndex}: "${category}" = ${value.toLocaleString(
+                  'vi-VN',
+                )}`,
+              );
+              cell.value = value;
+              cell.numFmt = '#,##0';
+              updateCount++;
+            } else {
+              console.log(
+                `     ⊘ R${rowNum}C${monthColIndex}: "${category}" already has ${cell.value}, skipped`,
+              );
+            }
             found = true;
           }
         });
 
         if (!found) {
-          console.log(`     ⚠️  Category "${category}" not found`);
+          console.log(`     ⚠️  Category "${category}" not found in template`);
         }
       });
 
       console.log(`     Updated ${updateCount} cells`);
     });
 
-    console.log('\n✅ All months filled');
+    console.log('\n✅ GL data filled (0s replaced only)');
     return workbook;
   }
 
