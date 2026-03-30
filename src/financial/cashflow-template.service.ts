@@ -89,13 +89,13 @@ export class CashflowTemplateService {
 
   /**
    * Copy entire template to new workbook
-   * Preserves ALL structure, formatting, and text
-   * Data values will be replaced by GL calculations
+   * Preserves: text, formatting, structure
+   * Clears: all numeric values (will be replaced by GL)
    */
   async copyTemplateStructure(
     sourceTemplate: ExcelJS.Workbook,
   ): Promise<ExcelJS.Workbook> {
-    console.log('\n📋 Copying full template...');
+    console.log('\n📋 Copying template structure...');
 
     const newWorkbook = new ExcelJS.Workbook();
     const sourceSheet = sourceTemplate.getWorksheet('Cashflow_Misa');
@@ -108,6 +108,8 @@ export class CashflowTemplateService {
     const newSheet = newWorkbook.addWorksheet(sourceSheet.name);
 
     console.log(`   Copying ${sourceSheet.rowCount} rows × ${sourceSheet.columnCount} columns...`);
+    console.log('   Keeping: text + formatting');
+    console.log('   Clearing: old numeric values');
 
     // Set column widths
     for (let colIdx = 1; colIdx <= sourceSheet.columnCount; colIdx++) {
@@ -118,7 +120,7 @@ export class CashflowTemplateService {
       }
     }
 
-    // Copy all rows with formatting + all text + all values
+    // Copy all rows
     sourceSheet.eachRow((sourceRow, rowNumber) => {
       const newRow = newSheet.getRow(rowNumber);
 
@@ -132,10 +134,22 @@ export class CashflowTemplateService {
         const sourceCell = sourceRow.getCell(colIdx);
         const newCell = newRow.getCell(colIdx);
 
-        // Copy everything: value, text, numbers, formulas
-        newCell.value = sourceCell.value;
+        // Keep TEXT, clear NUMBERS
+        if (typeof sourceCell.value === 'number') {
+          // Numeric value → clear (will be filled with GL)
+          newCell.value = null;
+        } else if (typeof sourceCell.value === 'string') {
+          // Text → keep
+          newCell.value = sourceCell.value;
+        } else if (sourceCell.value === null || sourceCell.value === undefined) {
+          // Empty → keep empty
+          newCell.value = null;
+        } else {
+          // Other types (formula, date, etc.) → keep
+          newCell.value = sourceCell.value;
+        }
 
-        // Copy formatting
+        // Copy formatting (ALWAYS)
         if (sourceCell.font) {
           newCell.font = { ...sourceCell.font };
         }
@@ -154,7 +168,7 @@ export class CashflowTemplateService {
       }
     });
 
-    console.log('✅ Full template copied (text + values + formatting)');
+    console.log('✅ Template copied (text + formatting kept, numbers cleared)');
     return newWorkbook;
   }
 
