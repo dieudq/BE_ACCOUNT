@@ -6,6 +6,7 @@ import { FinancialReportService } from './report.service';
 import { CashflowExportService } from './cashflow-export.service';
 import { GLFileParserService } from './gl-file-parser.service';
 import { GLFileProcessorService } from './gl-file-processor.service';
+import { CashflowTemplateService } from './cashflow-template.service';
 import { FinancialController } from './financial.controller';
 import { ExportController } from './export.controller';
 import { FileUploadController } from './file-upload.controller';
@@ -19,6 +20,7 @@ import { FileUploadController } from './file-upload.controller';
     CashflowExportService,
     GLFileParserService,
     GLFileProcessorService,
+    CashflowTemplateService,
   ],
   controllers: [FinancialController, ExportController, FileUploadController],
   exports: [
@@ -28,6 +30,7 @@ import { FileUploadController } from './file-upload.controller';
     CashflowExportService,
     GLFileParserService,
     GLFileProcessorService,
+    CashflowTemplateService,
   ],
 })
 export class FinancialModule {}
