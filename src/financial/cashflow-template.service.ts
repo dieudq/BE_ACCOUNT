@@ -5,20 +5,25 @@ import * as fs from 'fs';
 
 /**
  * Cashflow Template Service
- * LOGIC:
- * 1. Load template
- * 2. COPY ENTIRE template (all 963 rows × 30 cols, all formatting)
- * 3. Calculate GL totals
- * 4. Find matching rows + columns
- * 5. Fill GL data into specific cells ONLY
- * 6. Export completely new file
+ * 
+ * LOGIC (CORRECTED):
+ * 1. Load template (reference structure only)
+ * 2. Extract TOP-LEVEL category rows ONLY (Thu dự án, Lương dự án, etc.)
+ * 3. Create NEW workbook with:
+ *    - Headers from template
+ *    - Only top-level category rows
+ *    - Empty data cells (ready for GL fill)
+ * 4. Fill GL data into category rows
+ * 5. Export new file
+ * 
+ * DO NOT copy sub-rows, formulas, or extra detail rows!
  */
 @Injectable()
 export class CashflowTemplateService {
   private templateDir = path.join(process.cwd(), 'templates');
 
   /**
-   * Load template
+   * Load template as reference
    */
   async loadTemplate(): Promise<ExcelJS.Workbook> {
     if (!fs.existsSync(this.templateDir)) {
@@ -42,162 +47,99 @@ export class CashflowTemplateService {
   }
 
   /**
-   * Calculate GL totals by category
+   * Create NEW minimal workbook with ONLY top-level category rows
+   * (Do NOT copy entire template - that causes formula/sub-row mess)
    */
-  calculateCategoryTotals(
-    glData: Map<string, { debit: number; credit: number }>,
-  ): Map<string, number> {
-    const totals = new Map<string, number>();
-
-    console.log('🧮 Calculating GL totals by category...');
-
-    let thu = 0; // 515.x
-    let chi = 0; // 635.x
-    let taiChinhThuNhap = 0; // 81x
-    let taiChinhChi = 0; // 82x
-    let tienMat = 0; // 1111
-
-    for (const [account, amounts] of glData.entries()) {
-      console.log(`   Account ${account}: Debit=${amounts.debit}, Credit=${amounts.credit}`);
-
-      if (account.startsWith('515')) {
-        thu += amounts.debit;
-      } else if (account.startsWith('635')) {
-        chi += amounts.credit;
-      } else if (account.startsWith('81')) {
-        taiChinhThuNhap += amounts.debit;
-      } else if (account.startsWith('82')) {
-        taiChinhChi += amounts.credit;
-      } else if (account === '1111') {
-        tienMat += amounts.debit - amounts.credit;
-      }
-    }
-
-    totals.set('Thu dự án', thu);
-    totals.set('Chi dự án', chi);
-    totals.set('Tài chính thu nhập', taiChinhThuNhap);
-    totals.set('Tài chính chi', taiChinhChi);
-    totals.set('Tiền mặt', tienMat);
-
-    console.log('\n✅ Category Totals:');
-    totals.forEach((value, category) => {
-      console.log(`   ${category}: ${value.toLocaleString('vi-VN')}`);
-    });
-
-    return totals;
-  }
-
-  /**
-   * Copy entire template to new workbook
-   * Preserves: text, formatting, structure
-   * Clears: all numeric values (will be replaced by GL)
-   */
-  async copyTemplateStructure(
-    sourceTemplate: ExcelJS.Workbook,
+  async createMinimalCashflowWorkbook(
+    templateRef: ExcelJS.Workbook,
   ): Promise<ExcelJS.Workbook> {
-    console.log('\n📋 Copying template structure...');
-
-    const newWorkbook = new ExcelJS.Workbook();
-    const sourceSheet = sourceTemplate.getWorksheet('Cashflow_Misa');
-
-    if (!sourceSheet) {
-      throw new Error('Template sheet "Cashflow_Misa" not found');
+    const templateWs = templateRef.getWorksheet('Cashflow_Misa');
+    if (!templateWs) {
+      throw new Error('Template worksheet not found');
     }
 
-    // Create new sheet in new workbook
-    const newSheet = newWorkbook.addWorksheet(sourceSheet.name);
+    // Create NEW workbook
+    const newWb = new ExcelJS.Workbook();
+    const newWs = newWb.addWorksheet('Cashflow_Misa');
 
-    console.log(`   Copying ${sourceSheet.rowCount} rows × ${sourceSheet.columnCount} columns...`);
-    console.log('   Keeping: text + formatting');
-    console.log('   Clearing: old numeric values');
+    console.log('🔧 Creating minimal Cashflow workbook with top-level categories...');
 
-    // Set column widths
-    for (let colIdx = 1; colIdx <= sourceSheet.columnCount; colIdx++) {
-      const sourceCol = sourceSheet.getColumn(colIdx);
-      const newCol = newSheet.getColumn(colIdx);
-      if (sourceCol.width) {
-        newCol.width = sourceCol.width;
+    // Copy headers (rows 1-3)
+    for (let r = 1; r <= 3; r++) {
+      const srcRow = templateWs.getRow(r);
+      const dstRow = newWs.getRow(r);
+      
+      for (let c = 1; c <= 30; c++) {
+        const srcCell = srcRow.getCell(c);
+        const dstCell = dstRow.getCell(c);
+        
+        // Copy value, format, alignment
+        dstCell.value = srcCell.value;
+        dstCell.font = { ...srcCell.font };
+        dstCell.fill = { ...srcCell.fill };
+        dstCell.alignment = { ...srcCell.alignment };
+        dstCell.border = { ...srcCell.border };
       }
     }
 
-    // Copy all rows
-    sourceSheet.eachRow((sourceRow, rowNumber) => {
-      const newRow = newSheet.getRow(rowNumber);
+    console.log('   ✓ Headers copied (rows 1-3)');
 
-      // Copy row height
-      if (sourceRow.height) {
-        newRow.height = sourceRow.height;
+    // TOP-LEVEL category rows to copy (no sub-rows)
+    const topLevelRows = [
+      6,  // Thu dự án
+      17, // Lương dự án
+      23, // Quản lý văn phòng
+      28, // Chi phí đảm bảo chất lượng
+    ];
+
+    let destRow = 4;
+    for (const srcRowNum of topLevelRows) {
+      const srcRow = templateWs.getRow(srcRowNum);
+      const dstRow = newWs.getRow(destRow);
+
+      for (let c = 1; c <= 30; c++) {
+        const srcCell = srcRow.getCell(c);
+        const dstCell = dstRow.getCell(c);
+
+        // Copy text only (no formulas/values)
+        dstCell.value = srcCell.value;
+        dstCell.font = { ...srcCell.font };
+        dstCell.fill = { ...srcCell.fill };
+        dstCell.alignment = { ...srcCell.alignment };
+        dstCell.border = { ...srcCell.border };
       }
 
-      // Copy all cells in row
-      for (let colIdx = 1; colIdx <= sourceSheet.columnCount; colIdx++) {
-        const sourceCell = sourceRow.getCell(colIdx);
-        const newCell = newRow.getCell(colIdx);
+      console.log(`   ✓ Row ${srcRowNum} → Row ${destRow}: ${srcRow.getCell(2).value}`);
+      destRow++;
+    }
 
-        // Keep TEXT, clear NUMBERS
-        if (typeof sourceCell.value === 'number') {
-          // Numeric value → clear (will be filled with GL)
-          newCell.value = null;
-        } else if (typeof sourceCell.value === 'string') {
-          // Text → keep
-          newCell.value = sourceCell.value;
-        } else if (sourceCell.value === null || sourceCell.value === undefined) {
-          // Empty → keep empty
-          newCell.value = null;
-        } else {
-          // Other types (formula, date, etc.) → keep
-          newCell.value = sourceCell.value;
-        }
-
-        // Copy formatting (ALWAYS)
-        if (sourceCell.font) {
-          newCell.font = { ...sourceCell.font };
-        }
-        if (sourceCell.fill) {
-          newCell.fill = { ...sourceCell.fill };
-        }
-        if (sourceCell.alignment) {
-          newCell.alignment = { ...sourceCell.alignment };
-        }
-        if (sourceCell.border) {
-          newCell.border = { ...sourceCell.border };
-        }
-        if (sourceCell.numFmt) {
-          newCell.numFmt = sourceCell.numFmt;
-        }
-      }
-    });
-
-    console.log('✅ Template copied (text + formatting kept, numbers cleared)');
-    return newWorkbook;
+    console.log(`✅ Minimal workbook created (${destRow - 1} rows total)`);
+    return newWb;
   }
 
   /**
-   * Fill GL data with category mapping (using Danh sách)
+   * Fill GL data with category mapping
    * For each month:
-   * - Group GL transactions by counterAccount
-   * - Map counterAccount → Category (using ChartOfAccountsService)
-   * - Sum Debit (+) and Credit (-)
+   * - Sum GL by category
    * - Fill into category row
    */
   async fillGLDataWithCategoryMapping(
     workbook: ExcelJS.Workbook,
     glByMonth: Map<number, any[]>,
-    chartOfAccountsService: any, // ChartOfAccountsService
+    chartOfAccountsService: any,
     categoryRowMapping: Map<string, number>,
   ): Promise<ExcelJS.Workbook> {
     const worksheet = workbook.getWorksheet('Cashflow_Misa');
     if (!worksheet) {
-      throw new Error('Worksheet "Cashflow_Misa" not found');
+      throw new Error('Worksheet not found');
     }
 
-    console.log('\n📍 Filling GL data with category mapping...');
+    console.log('\n📍 Filling GL data into category rows...');
 
-    // For each month in GL data
     glByMonth.forEach((records, month) => {
       console.log(`\n   Month ${month}:`);
 
-      // Group records by counterAccount
+      // Group by counter-account
       const accountTotals = new Map<string, { debit: number; credit: number }>();
       records.forEach((record: any) => {
         const account = record.counterAccount as string;
@@ -206,68 +148,67 @@ export class CashflowTemplateService {
         }
         const totals = accountTotals.get(account);
         if (totals) {
-          // Debit (Phát sinh Nợ) = +incoming
-          // Credit (Phát sinh Có) = -outgoing
           totals.debit += (record.debitAmount as number) || 0;
           totals.credit += (record.creditAmount as number) || 0;
         }
       });
 
-      // Map accounts to categories
+      // Map to categories
       const categoryTotals = new Map<string, number>();
       accountTotals.forEach((amounts, account) => {
-        // Map account to category
         const category = chartOfAccountsService.mapAccountToCategory(account);
-
-        // Calculate net: Debit - Credit
         const net = amounts.debit - amounts.credit;
 
         console.log(
-          `     Account ${account} → ${category}: Debit=${amounts.debit}, Credit=${amounts.credit}, Net=${net}`,
+          `     ${account} → ${category}: Debit=${amounts.debit}, Credit=${amounts.credit}, Net=${net}`,
         );
 
-        // Sum by category
         if (!categoryTotals.has(category)) {
           categoryTotals.set(category, 0);
         }
         categoryTotals.set(category, (categoryTotals.get(category) || 0) + net);
       });
 
-      // Month column index (Actual columns only, skip Plan columns)
-      // F (6) = Jan, H (8) = Feb, J (10) = Mar, L (12) = Apr, N (14) = May, P (16) = Jun, R (18) = Jul, T (20) = Aug, V (22) = Sep, X (24) = Oct, Z (26) = Nov, \ (28) = Dec
+      // Month column (Actual only): F, H, J, L, N, P, R, T, V, X, Z, \
       const monthColIndex = 4 + month * 2;
-      console.log(
-        `   Target column: ${String.fromCharCode(64 + monthColIndex)} (index ${monthColIndex}) - Actual only`,
-      );
+      const colLetter = String.fromCharCode(64 + monthColIndex);
 
-      // Fill into template rows by category
-      let updatedCount = 0;
+      console.log(`   Fill column ${colLetter} (index ${monthColIndex})`);
+
+      let updateCount = 0;
       categoryTotals.forEach((value, category) => {
-        const rowNumber = categoryRowMapping.get(category);
-        if (rowNumber) {
-          const cell = worksheet.getRow(rowNumber).getCell(monthColIndex);
-          console.log(
-            `     ✓ R${rowNumber}C${monthColIndex}: "${category}" = ${value.toLocaleString(
-              'vi-VN',
-            )}`,
-          );
-          cell.value = value;
-          cell.numFmt = '#,##0';
-          updatedCount++;
-        } else {
-          console.log(`     ⚠️  Category "${category}" not found in template mapping`);
+        // Find row in new workbook by category name
+        let found = false;
+        worksheet.eachRow((row, rowNum) => {
+          const cellB = row.getCell(2).value;
+          if (cellB && String(cellB).trim() === category.trim()) {
+            const cell = row.getCell(monthColIndex);
+            console.log(
+              `     ✓ R${rowNum}C${monthColIndex}: "${category}" = ${value.toLocaleString(
+                'vi-VN',
+              )}`,
+            );
+            cell.value = value;
+            cell.numFmt = '#,##0';
+            updateCount++;
+            found = true;
+          }
+        });
+
+        if (!found) {
+          console.log(`     ⚠️  Category "${category}" not found`);
         }
       });
 
-      console.log(`     Updated ${updatedCount} cells`);
+      console.log(`     Updated ${updateCount} cells`);
     });
 
-    console.log(`\n✅ All months filled with category mapping`);
+    console.log('\n✅ All months filled');
     return workbook;
   }
 
   /**
-   * Export file to Excel
+   * Export to Excel
    */
   async exportToExcel(
     workbook: ExcelJS.Workbook,
