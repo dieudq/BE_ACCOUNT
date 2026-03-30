@@ -23,7 +23,8 @@ export class CashflowTemplateService {
   private templateDir = path.join(process.cwd(), 'templates');
 
   /**
-   * Load template as reference
+   * Load template for GL data injection
+   * Template has formulas + structure - we'll clear data and fill GL values
    */
   async loadTemplate(): Promise<ExcelJS.Workbook> {
     if (!fs.existsSync(this.templateDir)) {
@@ -43,6 +44,46 @@ export class CashflowTemplateService {
     await workbook.xlsx.readFile(templateFile);
 
     console.log(`✅ Template loaded: ${templates[0]}`);
+    return workbook;
+  }
+
+  /**
+   * Clear data columns from template (F-Z) to prepare for GL data
+   * Keep structure + formulas + formatting
+   */
+  async clearTemplateData(workbook: ExcelJS.Workbook): Promise<ExcelJS.Workbook> {
+    const worksheet = workbook.getWorksheet('Cashflow_Misa');
+    if (!worksheet) {
+      throw new Error('Worksheet not found');
+    }
+
+    console.log('🧹 Clearing template data columns (F-Z)...');
+
+    let cleared = 0;
+    // Clear data from row 3 onwards, columns F-Z (indices 6-26)
+    for (let r = 3; r <= worksheet.rowCount; r++) {
+      const row = worksheet.getRow(r);
+
+      for (let c = 6; c <= 26; c++) {
+        const cell = row.getCell(c);
+
+        // Keep formulas, clear numeric data
+        if (cell.value) {
+          if (typeof cell.value === 'object' && 'formula' in cell.value) {
+            // Keep formula
+            continue;
+          }
+
+          // Clear numeric/text data
+          if (typeof cell.value === 'number' || typeof cell.value === 'string') {
+            cell.value = null;
+            cleared++;
+          }
+        }
+      }
+    }
+
+    console.log(`✅ Cleared ${cleared} data cells`);
     return workbook;
   }
 

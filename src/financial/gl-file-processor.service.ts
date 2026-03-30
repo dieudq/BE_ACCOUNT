@@ -52,15 +52,13 @@ export class GLFileProcessorService {
         templatePath,
       );
 
-      // Load template (reference only)
-      console.log('📋 Loading template (reference)...');
+      // Load template
+      console.log('📋 Loading template...');
       const template = await this.cashflowTemplate.loadTemplate();
 
-      // Create minimal workbook with ONLY top-level categories
-      console.log('🔧 Creating minimal workbook...');
-      const minimalWb = await this.cashflowTemplate.createMinimalCashflowWorkbook(
-        template,
-      );
+      // Clear template data (keep structure + formulas)
+      console.log('🧹 Clearing template data...');
+      const clearedTemplate = await this.cashflowTemplate.clearTemplateData(template);
 
       // Group GL records by month
       console.log('📅 Grouping GL by month...');
@@ -72,9 +70,9 @@ export class GLFileProcessorService {
       });
 
       // Fill template for all months with category mapping
-      console.log('💾 Filling data with mapped GL...');
+      console.log('💾 Filling template with GL data...');
       const filledTemplate = await this.cashflowTemplate.fillGLDataWithCategoryMapping(
-        minimalWb,
+        clearedTemplate,
         glByMonth,
         this.chartOfAccounts,
         categoryRowMapping,
