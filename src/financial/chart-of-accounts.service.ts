@@ -12,7 +12,7 @@ import * as fs from 'fs';
 export class ChartOfAccountsService {
   /**
    * Load Danh sách file
-   * Returns Map<account_code, {name, type, category}>
+   * Returns Map<account_code, {name, type}>
    */
   async loadChartOfAccounts(
     filePath: string,
@@ -48,57 +48,95 @@ export class ChartOfAccountsService {
   }
 
   /**
-   * Map GL account code → Cashflow category
-   * Based on account prefix (111-128 = Cash, 334 = Salary, 515 = Revenue, etc.)
+   * Map GL account code → Cashflow category row name
+   * Based on Danh sách + Template analysis
+   * 
+   * MAPPING:
+   * 511.x → Thu dự án (Revenue)
+   * 515.3, 515.5 → Thu đầu tư tài chính/R&D
+   * 515.2 → Thu khác
+   * 711.2 → Thu khác
+   * 334.1, 334.2 → Lương dự án
+   * 6422.x → Quản lý văn phòng (Admin expense)
+   * 6421.2 → Hành chính/Nhân Sự
+   * 6422.6 → Kế toán/Tài Chính
+   * 6421.3, 6421.4, 6421.5, 6421.6 → Sales
+   * 6421.8, 6421.9 → Marketing
+   * 154.x → Chi phí đảm bảo chất lượng (QA cost)
    */
-  mapAccountToCategory(
-    accountCode: string,
-    coa: Map<string, { name: string; type: string }>,
-  ): string {
+  mapAccountToCategory(accountCode: string): string {
     const code = accountCode.trim();
 
-    // Cash accounts (111-128) → Tiền mặt
-    if (code.startsWith('111') || code.startsWith('112')) {
-      return 'Tiền mặt';
-    }
-
-    // Revenue (511-515) → Thu dự án
-    if (code.startsWith('511') || code.startsWith('513') || code.startsWith('515')) {
+    // REVENUE (THU)
+    // 511.x → Thu dự án
+    if (code.startsWith('511')) {
       return 'Thu dự án';
     }
 
-    // Employee salary (334.x) → Lương dự án
-    if (code.startsWith('334')) {
-      return 'Lương dự án';
+    // 515.3, 515.5 → Thu đầu tư tài chính/R&D
+    if (code === '515.3') {
+      return 'Thu đầu tư tài chính, tiết kiệm';
+    }
+    if (code === '515.5') {
+      return 'Thu đầu tư R&D';
     }
 
-    // Sales expense (6421.x) → Quản lý bán hàng
-    if (code.startsWith('6421')) {
-      return 'Quản lý bán hàng';
-    }
-
-    // Admin expense (6422.x) → Quản lý văn phòng
-    if (code.startsWith('6422')) {
-      return 'Quản lý văn phòng';
-    }
-
-    // Other revenue (711.x) → Thu khác
-    if (code.startsWith('711')) {
+    // 515.2 → Thu khác
+    if (code === '515.2') {
       return 'Thu khác';
     }
 
-    // Financial expense (635.x) → Lãi/lỗ TG
-    if (code.startsWith('635')) {
-      return 'Lãi/lỗ TG';
+    // 711.2 → Thu khác
+    if (code === '711.2') {
+      return 'Thu khác';
     }
 
-    // Project costs (154.x) → Chi phí dự án
+    // SALARY (LƯƠNG)
+    // 334.1, 334.2 → Lương dự án
+    if (code === '334.1' || code === '334.2') {
+      return 'Lương dự án';
+    }
+
+    // ADMIN EXPENSE (QUẢN LÝ)
+    // 6422.x (except 6422.6) → Quản lý văn phòng
+    if (code.startsWith('6422') && code !== '6422.6') {
+      return 'Quản lý văn phòng';
+    }
+
+    // 6421.2 → Hành chính/Nhân Sự
+    if (code === '6421.2') {
+      return 'Hành chính/ Nhân Sự';
+    }
+
+    // 6422.6 → Kế toán/Tài Chính
+    if (code === '6422.6') {
+      return 'Kế toán/Tài Chính';
+    }
+
+    // 6421.3, 6421.4, 6421.5, 6421.6 → Sales
+    if (
+      code === '6421.3' ||
+      code === '6421.4' ||
+      code === '6421.5' ||
+      code === '6421.6'
+    ) {
+      return 'Sales';
+    }
+
+    // 6421.8, 6421.9 → Marketing
+    if (code === '6421.8' || code === '6421.9') {
+      return 'Marketing';
+    }
+
+    // QA COST (CHI PHÍ ĐẢM BẢO CHẤT LƯỢNG)
+    // 154.x → Chi phí đảm bảo chất lượng
     if (code.startsWith('154')) {
       return 'Chi phí đảm bảo chất lượng';
     }
 
-    // Default to unknown
-    return 'Khác';
+    // Default: Unknown (skip)
+    console.log(`⚠️  Unknown account: ${code}`);
+    return 'Unknown';
   }
 
   /**
@@ -124,20 +162,24 @@ export class ChartOfAccountsService {
       const colB = String(row.getCell(2).value || '').trim();
 
       // Map category names to rows
-      if (colB === 'Thu dự án') {
-        mapping.set('Thu dự án', rowNumber);
-      } else if (colB === 'Thu khác') {
-        mapping.set('Thu khác', rowNumber);
-      } else if (colB === 'Lương dự án') {
-        mapping.set('Lương dự án', rowNumber);
-      } else if (colB === 'Quản lý bán hàng') {
-        mapping.set('Quản lý bán hàng', rowNumber);
-      } else if (colB === 'Quản lý văn phòng') {
-        mapping.set('Quản lý văn phòng', rowNumber);
-      } else if (colB === 'Chi phí đảm bảo chất lượng') {
-        mapping.set('Chi phí đảm bảo chất lượng', rowNumber);
-      } else if (colB === 'Lãi/lỗ TG') {
-        mapping.set('Lãi/lỗ TG', rowNumber);
+      const categoryNames = [
+        'Thu dự án',
+        'Thu đầu tư tài chính, tiết kiệm',
+        'Thu đầu tư R&D',
+        'Thu khác',
+        'Lương dự án',
+        'Quản lý bán hàng',
+        'Quản lý văn phòng',
+        'Chi phí đảm bảo chất lượng',
+        'Hành chính/ Nhân Sự',
+        'Kế toán/Tài Chính',
+        'Sales',
+        'Marketing',
+        'Hạ tầng IT',
+      ];
+
+      if (categoryNames.includes(colB)) {
+        mapping.set(colB, rowNumber);
       }
     });
 

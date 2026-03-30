@@ -49,6 +49,20 @@ export class CashflowTemplateService {
   /**
    * Create NEW minimal workbook with ONLY top-level category rows
    * (Do NOT copy entire template - that causes formula/sub-row mess)
+   * 
+   * Top-level rows (no sub-rows):
+   * R6: Thu dự án
+   * R10: Thu đầu tư tài chính, tiết kiệm
+   * R11: Thu đầu tư R&D
+   * R12: Thu khác
+   * R17: Lương dự án
+   * R23: Quản lý văn phòng
+   * R28: Chi phí đảm bảo chất lượng
+   * R31: Hành chính/ Nhân Sự
+   * R34: Kế toán/Tài Chính
+   * R37: Sales
+   * R44: Marketing
+   * R49: Hạ tầng IT
    */
   async createMinimalCashflowWorkbook(
     templateRef: ExcelJS.Workbook,
@@ -68,11 +82,11 @@ export class CashflowTemplateService {
     for (let r = 1; r <= 3; r++) {
       const srcRow = templateWs.getRow(r);
       const dstRow = newWs.getRow(r);
-      
+
       for (let c = 1; c <= 30; c++) {
         const srcCell = srcRow.getCell(c);
         const dstCell = dstRow.getCell(c);
-        
+
         // Copy value, format, alignment
         dstCell.value = srcCell.value;
         dstCell.font = { ...srcCell.font };
@@ -84,17 +98,25 @@ export class CashflowTemplateService {
 
     console.log('   ✓ Headers copied (rows 1-3)');
 
-    // TOP-LEVEL category rows to copy (no sub-rows)
+    // TOP-LEVEL category rows (confirmed mapping)
     const topLevelRows = [
-      6,  // Thu dự án
-      17, // Lương dự án
-      23, // Quản lý văn phòng
-      28, // Chi phí đảm bảo chất lượng
+      { src: 6, name: 'Thu dự án' },
+      { src: 10, name: 'Thu đầu tư tài chính, tiết kiệm' },
+      { src: 11, name: 'Thu đầu tư R&D' },
+      { src: 12, name: 'Thu khác' },
+      { src: 17, name: 'Lương dự án' },
+      { src: 23, name: 'Quản lý văn phòng' },
+      { src: 28, name: 'Chi phí đảm bảo chất lượng' },
+      { src: 31, name: 'Hành chính/ Nhân Sự' },
+      { src: 34, name: 'Kế toán/Tài Chính' },
+      { src: 37, name: 'Sales' },
+      { src: 44, name: 'Marketing' },
+      { src: 49, name: 'Hạ tầng IT' },
     ];
 
     let destRow = 4;
-    for (const srcRowNum of topLevelRows) {
-      const srcRow = templateWs.getRow(srcRowNum);
+    for (const item of topLevelRows) {
+      const srcRow = templateWs.getRow(item.src);
       const dstRow = newWs.getRow(destRow);
 
       for (let c = 1; c <= 30; c++) {
@@ -109,7 +131,7 @@ export class CashflowTemplateService {
         dstCell.border = { ...srcCell.border };
       }
 
-      console.log(`   ✓ Row ${srcRowNum} → Row ${destRow}: ${srcRow.getCell(2).value}`);
+      console.log(`   ✓ Row ${item.src} → Row ${destRow}: ${item.name}`);
       destRow++;
     }
 
