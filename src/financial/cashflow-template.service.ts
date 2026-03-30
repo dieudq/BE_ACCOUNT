@@ -233,10 +233,11 @@ export class CashflowTemplateService {
         categoryTotals.set(category, (categoryTotals.get(category) || 0) + net);
       });
 
-      // Month column index
-      const monthColIndex = 3 + month * 2;
+      // Month column index (Actual columns only, skip Plan columns)
+      // F (6) = Jan, H (8) = Feb, J (10) = Mar, L (12) = Apr, N (14) = May, P (16) = Jun, R (18) = Jul, T (20) = Aug, V (22) = Sep, X (24) = Oct, Z (26) = Nov, \ (28) = Dec
+      const monthColIndex = 4 + month * 2;
       console.log(
-        `   Target column: ${String.fromCharCode(64 + monthColIndex)} (index ${monthColIndex})`,
+        `   Target column: ${String.fromCharCode(64 + monthColIndex)} (index ${monthColIndex}) - Actual only`,
       );
 
       // Fill into template rows by category
