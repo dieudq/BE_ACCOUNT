@@ -7,9 +7,10 @@ import { ChatModule } from '../chat/chat.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { VouchersModule } from '../vouchers/vouchers.module';
 import { ApprovalsModule } from '../approvals/approvals.module';
+import { FinancialModule } from '../financial/financial.module';
 
 @Module({
-  imports: [ChatModule, PrismaModule, VouchersModule, ApprovalsModule],
+  imports: [ChatModule, PrismaModule, VouchersModule, ApprovalsModule, FinancialModule],
   providers: [TelegramService, TelegramGroupService, BotCommandService],
   controllers: [TelegramController],
   exports: [TelegramService, TelegramGroupService],

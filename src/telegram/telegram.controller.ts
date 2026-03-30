@@ -1,6 +1,7 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { TelegramService } from './telegram.service';
 import { TelegramGroupService } from './telegram-group.service';
+import { GLFileProcessorService } from '../financial/gl-file-processor.service';
 import axios from 'axios';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -10,6 +11,7 @@ export class TelegramController {
   constructor(
     private telegram: TelegramService,
     private telegramGroup: TelegramGroupService,
+    private glProcessor: GLFileProcessorService,
   ) {}
 
   @Post()
@@ -93,20 +95,20 @@ export class TelegramController {
 
       console.log(`✅ File saved: ${filepath}`);
 
-      // TODO: Call backend API to process GL file
-      // const cashflowPath = await this.backendAPI.processGLFile(filepath);
+      // Process GL file → Generate Cashflow Excel
+      console.log(`🧮 Processing GL file...`);
+      const cashflowPath = await this.glProcessor.processGLFileAndGenerateCashflow(filepath);
 
-      // For now, send info message
-      await bot.sendMessage(
-        chatId,
-        `✅ File received: ${document.file_name}\n\nProcessing GL data...`,
-      );
+      console.log(`✅ Cashflow generated: ${cashflowPath}`);
 
-      // In production: Download and send cashflow file back
-      // await bot.sendDocument(chatId, fs.createReadStream(cashflowPath), {
-      //   caption: 'Generated Cashflow Report',
-      //   parse_mode: 'HTML',
-      // });
+      // Send cashflow file back to user
+      const fileStream = fs.createReadStream(cashflowPath);
+      await bot.sendDocument(chatId, fileStream, {
+        caption: '📊 Cashflow Report Generated',
+        parse_mode: 'HTML',
+      });
+
+      console.log(`✅ File sent back to Telegram chat: ${chatId}`);
     } catch (err) {
       const bot = this.telegram.getBot();
       console.error('File processing error:', err);
