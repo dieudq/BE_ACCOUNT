@@ -121,7 +121,15 @@ export class GLFileParserService {
       }
     });
 
-    console.log(`✅ Parsed GL file: ${data.sheetName}, Period: ${data.period}, Accounts: ${data.accounts.size}`);
+    console.log(`✅ Parsed GL file: ${data.sheetName}`);
+    console.log(`   Period: ${data.period}`);
+    console.log(`   Total accounts found: ${data.accounts.size}`);
+    console.log(`   Accounts:`);
+    data.accounts.forEach((amounts, account) => {
+      console.log(
+        `     ${account}: Debit=${amounts.debit.toLocaleString('vi-VN')}, Credit=${amounts.credit.toLocaleString('vi-VN')}`,
+      );
+    });
     return data;
   }
 
