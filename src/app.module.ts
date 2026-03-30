@@ -15,6 +15,7 @@ import { SchedulerModule } from './scheduler/scheduler.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { SyncModule } from './sync/sync.module';
 import { FinancialModule } from './financial/financial.module';
+import { ERPModule } from './erp/erp.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { FinancialModule } from './financial/financial.module';
     ApprovalsModule,
     SyncModule,
     FinancialModule,
+    ERPModule,
   ],
   controllers: [AppController],
   providers: [AppService],
