@@ -86,15 +86,23 @@ export class ERPEventListenerService {
    */
   private async sendTelegramNotification(text: string) {
     const allowedUsers = (process.env.ALLOWED_TELEGRAM_USERS || '').split(',').filter(Boolean);
-    if (allowedUsers.length === 0) {
-      console.warn('No ALLOWED_TELEGRAM_USERS configured');
+    const hrChatId = process.env.HR_TELEGRAM_CHAT_ID;
+
+    const recipients = [...allowedUsers];
+    if (hrChatId) {
+      recipients.push(hrChatId);
+    }
+
+    if (recipients.length === 0) {
+      console.warn('No ALLOWED_TELEGRAM_USERS or HR_TELEGRAM_CHAT_ID configured');
       return;
     }
 
     try {
       const bot = this.telegram.getBot();
-      for (const userId of allowedUsers) {
-        await bot.sendMessage(userId, text);
+      for (const recipient of recipients) {
+        await bot.sendMessage(recipient, text);
+        console.log(`  📨 Sent to: ${recipient}`);
       }
     } catch (err) {
       console.error('Error sending Telegram notification:', err);
