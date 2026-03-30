@@ -409,6 +409,20 @@ model AccountMapping {
 
 // ============ AUDIT & COMPLIANCE ============
 
+model TelegramGroup {
+  id              String    @id @default(cuid())
+  chatId          String    @unique // Telegram group ID (can be negative)
+  groupName       String?
+  description     String?
+  isActive        Boolean   @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([chatId])
+  @@map("telegram_groups")
+}
+
 model AuditLog {
   id              String    @id @default(cuid())
   entityType      String    @db.VarChar(50) // "Voucher", "JournalEntry", "Period"

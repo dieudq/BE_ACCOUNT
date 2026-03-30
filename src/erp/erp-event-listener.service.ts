@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { TelegramGroupService } from '../telegram/telegram-group.service';
 
 export interface ERPEvent {
   eventId: string;
@@ -21,7 +22,11 @@ export interface ERPEvent {
 
 @Injectable()
 export class ERPEventListenerService {
-  constructor(private prisma: PrismaService, private telegram: TelegramService) {}
+  constructor(
+    private prisma: PrismaService,
+    private telegram: TelegramService,
+    private telegramGroup: TelegramGroupService,
+  ) {}
 
   /**
    * Process event from ERP
@@ -93,8 +98,14 @@ export class ERPEventListenerService {
       recipients.push(hrChatId);
     }
 
+    // Also send to all registered groups
+    const groups = await this.telegramGroup.getActiveGroups();
+    for (const group of groups) {
+      recipients.push(group.chatId);
+    }
+
     if (recipients.length === 0) {
-      console.warn('No ALLOWED_TELEGRAM_USERS or HR_TELEGRAM_CHAT_ID configured');
+      console.warn('No recipients configured (users or groups)');
       return;
     }
 
