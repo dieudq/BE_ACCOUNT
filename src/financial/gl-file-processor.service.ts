@@ -12,13 +12,11 @@ export class GLFileProcessorService {
   ) {}
 
   /**
-   * Process uploaded GL file → Parse → Fill Template → Export Excel
-   * 
-   * LOGIC:
-   * 1. Parse GL file (extract account data by code)
-   * 2. Load template (preserve structure + formulas)
-   * 3. Calculate GL totals by category (515.x, 635.x, etc.)
-   * 4. Fill template with GL values in correct rows/columns
+   * Process uploaded GL file:
+   * 1. Parse GL → Extract account data
+   * 2. Load template as reference (structure only)
+   * 3. Calculate GL totals
+   * 4. CREATE NEW file with GL data
    * 5. Export
    */
   async processGLFileAndGenerateCashflow(filePath: string): Promise<string> {
@@ -32,9 +30,9 @@ export class GLFileProcessorService {
       // Extract year/month from period
       const [year, month] = glData.period.split('-').map(Number);
 
-      // Load template (preserve all structure)
-      console.log('📋 Loading template...');
-      const template = await this.cashflowTemplate.loadTemplate();
+      // Load template as reference
+      console.log('📋 Loading template as reference...');
+      const templateRef = await this.cashflowTemplate.loadTemplateAsReference();
 
       // Calculate GL totals
       console.log('🧮 Calculating GL totals...');
@@ -42,19 +40,19 @@ export class GLFileProcessorService {
         glData.accounts,
       );
 
-      // Fill template with GL data
-      console.log('📝 Filling template with GL data...');
-      const filledTemplate = await this.cashflowTemplate.fillTemplateWithGLData(
-        template,
+      // Create NEW file with GL data
+      console.log('📝 Creating NEW file with GL data...');
+      const newFile = await this.cashflowTemplate.createNewFileWithGLData(
+        templateRef,
         totals,
         month,
       );
 
       // Export
-      console.log('💾 Exporting to Excel...');
+      console.log('💾 Exporting new file...');
       const exportsDir = path.join(process.cwd(), 'exports');
       const outputPath = await this.cashflowTemplate.exportToExcel(
-        filledTemplate,
+        newFile,
         exportsDir,
         `cashflow_${year}_${String(month).padStart(2, '0')}_${Date.now()}.xlsx`,
       );
