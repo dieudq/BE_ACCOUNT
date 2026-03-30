@@ -4,13 +4,30 @@ import { FinancialPeriodService } from './period.service';
 import { JournalEntryService } from './journal-entry.service';
 import { FinancialReportService } from './report.service';
 import { CashflowExportService } from './cashflow-export.service';
+import { GLFileParserService } from './gl-file-parser.service';
+import { GLFileProcessorService } from './gl-file-processor.service';
 import { FinancialController } from './financial.controller';
 import { ExportController } from './export.controller';
+import { FileUploadController } from './file-upload.controller';
 
 @Module({
   imports: [PrismaModule],
-  providers: [FinancialPeriodService, JournalEntryService, FinancialReportService, CashflowExportService],
-  controllers: [FinancialController, ExportController],
-  exports: [FinancialPeriodService, JournalEntryService, FinancialReportService, CashflowExportService],
+  providers: [
+    FinancialPeriodService,
+    JournalEntryService,
+    FinancialReportService,
+    CashflowExportService,
+    GLFileParserService,
+    GLFileProcessorService,
+  ],
+  controllers: [FinancialController, ExportController, FileUploadController],
+  exports: [
+    FinancialPeriodService,
+    JournalEntryService,
+    FinancialReportService,
+    CashflowExportService,
+    GLFileParserService,
+    GLFileProcessorService,
+  ],
 })
 export class FinancialModule {}
