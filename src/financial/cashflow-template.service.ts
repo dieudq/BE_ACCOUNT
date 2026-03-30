@@ -65,17 +65,34 @@ export class CashflowTemplateService {
 
     console.log('🔧 Creating minimal Cashflow workbook with top-level categories...');
 
-    // Create fresh headers (row 1-2) WITHOUT copying formulas
-    // Just put month names + "Actual" placeholder
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
-    newWs.getRow(1).values = ['', '', '', '', ...months.flatMap(m => [m, 'Plan'])];
-    newWs.getRow(2).values = ['', '', '', '', ...Array(24).fill('').flatMap((_, i) => {
-      const monthIdx = Math.floor(i / 2);
-      return [i % 2 === 0 ? 'Actual' : 'Plan'];
-    })];
-    
-    console.log('   ✓ Fresh headers created (rows 1-2)');
+    // Copy header FORMATTING from template (row 1-2) - colors, fonts, borders
+    // BUT skip formulas to avoid errors
+    for (let r = 1; r <= 2; r++) {
+      const srcRow = templateWs.getRow(r);
+      const dstRow = newWs.getRow(r);
+
+      for (let c = 1; c <= 30; c++) {
+        const srcCell = srcRow.getCell(c);
+        const dstCell = dstRow.getCell(c);
+
+        // Copy FORMATTING (colors, fonts, borders, alignment)
+        if (srcCell.font) dstCell.font = { ...srcCell.font };
+        if (srcCell.fill) dstCell.fill = { ...srcCell.fill };
+        if (srcCell.alignment) dstCell.alignment = { ...srcCell.alignment };
+        if (srcCell.border) dstCell.border = { ...srcCell.border };
+
+        // Copy VALUE only if it's NOT a formula
+        const srcValue = srcCell.value;
+        if (srcValue && typeof srcValue === 'object' && 'formula' in srcValue) {
+          // Skip formulas
+          dstCell.value = srcCell.text || '';
+        } else {
+          dstCell.value = srcValue;
+        }
+      }
+    }
+
+    console.log('   ✓ Headers copied with formatting (rows 1-2)');
 
     // TOP-LEVEL category rows (confirmed mapping)
     const topLevelRows = [
