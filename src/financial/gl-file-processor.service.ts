@@ -12,7 +12,14 @@ export class GLFileProcessorService {
   ) {}
 
   /**
-   * Process uploaded GL file → Parse → Map to Template → Export Excel
+   * Process uploaded GL file → Parse → Create New Cashflow File → Export Excel
+   * 
+   * LOGIC:
+   * 1. Parse GL file (extract account data)
+   * 2. Load template as reference (structure/format only)
+   * 3. Create NEW Excel file (not copy of template)
+   * 4. Fill NEW file with GL calculations + template formatting
+   * 5. Export
    */
   async processGLFileAndGenerateCashflow(filePath: string): Promise<string> {
     try {
@@ -25,27 +32,24 @@ export class GLFileProcessorService {
       // Extract year/month from period
       const [year, month] = glData.period.split('-').map(Number);
 
-      // Load template
-      console.log('📋 Loading Cashflow template...');
-      const workbook = await this.cashflowTemplate.loadTemplate();
+      // Load template as reference
+      console.log('📋 Loading template as reference...');
+      const templateRef = await this.cashflowTemplate.loadTemplateAsReference();
 
-      // Map GL data to template
-      console.log('🧮 Mapping GL data to template...');
-      const mappedWorkbook = await this.cashflowTemplate.mapGLDataToTemplate(
-        workbook,
+      // Create NEW Cashflow file with GL data
+      console.log('📝 Creating NEW Cashflow file...');
+      const newWorkbook = await this.cashflowTemplate.createNewCashflowFile(
+        templateRef,
         glData.accounts,
         year,
         month,
       );
 
-      // Recalculate formulas
-      await this.cashflowTemplate.recalculateFormulas(mappedWorkbook);
-
-      // Export to Excel
+      // Export new file
       console.log('💾 Exporting to Excel...');
       const exportsDir = path.join(process.cwd(), 'exports');
       const outputPath = await this.cashflowTemplate.exportToExcel(
-        mappedWorkbook,
+        newWorkbook,
         exportsDir,
         `cashflow_${year}_${String(month).padStart(2, '0')}_${Date.now()}.xlsx`,
       );

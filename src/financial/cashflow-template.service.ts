@@ -9,18 +9,20 @@ export interface GLCategoryData {
 
 /**
  * Cashflow Template Service
- * Maps parsed GL data into user-provided template
- * - Template = Design/Format only
- * - GL data = Actual calculation from uploaded file
+ * LOGIC:
+ * 1. Load template as REFERENCE (structure/format only)
+ * 2. Calculate GL totals from parsed GL data
+ * 3. Create NEW Excel file (not copy of template)
+ * 4. Populate new file with GL calculations + template formatting
  */
 @Injectable()
 export class CashflowTemplateService {
   private templateDir = path.join(process.cwd(), 'templates');
 
   /**
-   * Load template from templates/ directory
+   * Load template as reference for structure/formatting
    */
-  async loadTemplate(): Promise<ExcelJS.Workbook> {
+  async loadTemplateAsReference(): Promise<ExcelJS.Workbook> {
     if (!fs.existsSync(this.templateDir)) {
       throw new Error('Templates directory not found');
     }
@@ -31,7 +33,7 @@ export class CashflowTemplateService {
 
     if (templates.length === 0) {
       throw new Error(
-        'No Cashflow template found. Please ensure template file exists in templates/ directory.',
+        'No Cashflow template found. Ensure template file exists in templates/ directory.',
       );
     }
 
@@ -39,24 +41,58 @@ export class CashflowTemplateService {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(templateFile);
 
-    console.log(`✅ Template loaded: ${templates[0]}`);
+    console.log(`✅ Template reference loaded: ${templates[0]}`);
     return workbook;
   }
 
   /**
+   * Extract template structure (headers, formatting, column layout)
+   */
+  extractTemplateStructure(template: ExcelJS.Workbook): {
+    sheetName: string;
+    rows: any[];
+    columns: any[];
+  } {
+    const worksheet = template.getWorksheet(1);
+    if (!worksheet) {
+      throw new Error('No worksheet in template');
+    }
+
+    const structure = {
+      sheetName: worksheet.name || 'Cashflow',
+      rows: [],
+      columns: worksheet.columns || [],
+    };
+
+    console.log(`📋 Extracting template structure from sheet: ${worksheet.name}`);
+
+    // Extract all rows (for reference)
+    worksheet.eachRow((row, rowNumber) => {
+      structure.rows.push({
+        rowNumber,
+        values: row.values,
+        height: row.height,
+      });
+    });
+
+    console.log(
+      `   Found ${structure.rows.length} rows, ${structure.columns.length} columns`,
+    );
+    return structure;
+  }
+
+  /**
    * Calculate GL data totals by category
-   * Input: Map of GL accounts with debit/credit amounts
-   * Output: Totals per category (Thu, Chi, Tài chính, etc.)
    */
   calculateCategoryTotals(
     glData: Map<string, { debit: number; credit: number }>,
   ): GLCategoryData {
     const totals: GLCategoryData = {
-      'Thu dự án': 0, // 515.x - Revenue (Debit)
-      'Chi dự án': 0, // 635.x - Expense (Credit)
-      'Tài chính thu nhập': 0, // 81x - Financial income (Debit)
-      'Tài chính chi': 0, // 82x - Financial expense (Credit)
-      'Tiền mặt': 0, // 1111 - Cash (Debit - Credit)
+      'Thu dự án': 0, // 515.x - Revenue
+      'Chi dự án': 0, // 635.x - Expense
+      'Tài chính thu nhập': 0, // 81x - Financial income
+      'Tài chính chi': 0, // 82x - Financial expense
+      'Tiền mặt': 0, // 1111 - Cash
     };
 
     console.log('🧮 Calculating GL totals by category...');
@@ -67,110 +103,133 @@ export class CashflowTemplateService {
       );
 
       if (account.startsWith('515')) {
-        // Revenue accounts - use Debit
         totals['Thu dự án'] += amounts.debit;
-        console.log(`     → Added to "Thu dự án": +${amounts.debit}`);
+        console.log(`     → "Thu dự án" += ${amounts.debit}`);
       } else if (account.startsWith('635')) {
-        // Expense accounts - use Credit
         totals['Chi dự án'] += amounts.credit;
-        console.log(`     → Added to "Chi dự án": +${amounts.credit}`);
+        console.log(`     → "Chi dự án" += ${amounts.credit}`);
       } else if (account.startsWith('81')) {
-        // Financial income - use Debit
         totals['Tài chính thu nhập'] += amounts.debit;
-        console.log(`     → Added to "Tài chính thu nhập": +${amounts.debit}`);
+        console.log(`     → "Tài chính thu nhập" += ${amounts.debit}`);
       } else if (account.startsWith('82')) {
-        // Financial expense - use Credit
         totals['Tài chính chi'] += amounts.credit;
-        console.log(`     → Added to "Tài chính chi": +${amounts.credit}`);
+        console.log(`     → "Tài chính chi" += ${amounts.credit}`);
       } else if (account === '1111') {
-        // Cash - Net (Debit - Credit)
         totals['Tiền mặt'] += amounts.debit - amounts.credit;
-        console.log(
-          `     → Added to "Tiền mặt": +${amounts.debit - amounts.credit}`,
-        );
+        console.log(`     → "Tiền mặt" += ${amounts.debit - amounts.credit}`);
       }
     }
 
-    console.log('\n✅ Category Totals:');
+    console.log('\n✅ Final Category Totals:');
     Object.entries(totals).forEach(([category, value]) => {
-      console.log(
-        `   ${category}: ${value.toLocaleString('vi-VN')} VND`,
-      );
+      console.log(`   ${category}: ${value.toLocaleString('vi-VN')} VND`);
     });
 
     return totals;
   }
 
   /**
-   * Map GL calculated data into template
-   * Finds category rows and fills with GL totals
+   * Create NEW Excel file (not copy of template)
+   * Use template structure as reference, populate with GL data
    */
-  async mapGLDataToTemplate(
-    template: ExcelJS.Workbook,
+  async createNewCashflowFile(
+    templateRef: ExcelJS.Workbook,
     glData: Map<string, { debit: number; credit: number }>,
     year: number,
     month: number,
   ): Promise<ExcelJS.Workbook> {
-    const worksheet = template.getWorksheet(1);
-    if (!worksheet) {
-      throw new Error('No worksheet in template');
-    }
-
-    // Calculate totals
+    // Calculate GL totals
     const categoryTotals = this.calculateCategoryTotals(glData);
 
-    console.log('\n📍 Mapping GL data to template...');
+    // Extract template structure
+    const templateStructure = this.extractTemplateStructure(templateRef);
 
-    // Column mapping: Assume column B is Jan (month 1), C is Feb (month 2), etc.
-    // For month=3 (March), column should be D (column index 4)
-    const dataColumnIndex = month + 1; // Column A=1, B=2, C=3, D=4, etc.
+    // Create NEW workbook (not copy)
+    const newWorkbook = new ExcelJS.Workbook();
+    const newWorksheet = newWorkbook.addWorksheet(templateStructure.sheetName);
 
     console.log(
-      `   Target column: Column ${String.fromCharCode(64 + dataColumnIndex)} (Month ${month})`,
+      '\n📝 Creating NEW Cashflow file from template structure...',
     );
 
-    let updateCount = 0;
+    // Copy columns from template
+    if (templateStructure.columns && templateStructure.columns.length > 0) {
+      newWorksheet.columns = templateStructure.columns.map((col) => ({
+        header: col.header,
+        width: col.width || 15,
+      }));
+    }
 
-    // Search for category rows and fill with GL data
-    worksheet.eachRow((row, rowNumber) => {
-      const firstCell = row.getCell(1).value;
-      if (!firstCell) return;
+    // Copy rows from template and fill GL data
+    const sourceWorksheet = templateRef.getWorksheet(1);
+    if (!sourceWorksheet) {
+      throw new Error('Source template has no worksheet');
+    }
 
-      const cellText = String(firstCell).trim();
+    let rowCount = 0;
+    const dataColumnIndex = month + 1; // Column B=2 (Jan), C=3 (Feb), D=4 (Mar), etc.
 
-      // Match category names
-      for (const [category, value] of Object.entries(categoryTotals)) {
-        if (cellText.includes(category)) {
-          const targetCell = row.getCell(dataColumnIndex);
-          if (targetCell) {
-            targetCell.value = value;
-            targetCell.numFmt = '#,##0'; // Vietnamese number format
-            updateCount++;
-            console.log(
-              `   ✓ R${rowNumber}C${dataColumnIndex}: "${cellText}" = ${value.toLocaleString('vi-VN')}`,
-            );
+    console.log(
+      `   Target column for month ${month}: Column ${String.fromCharCode(64 + dataColumnIndex)}`,
+    );
+
+    // Copy all rows from template
+    sourceWorksheet.eachRow((sourceRow, sourceRowNumber) => {
+      const newRow = newWorksheet.getRow(sourceRowNumber);
+
+      // Copy cell values and formatting
+      sourceRow.eachCell((sourceCell, colNumber) => {
+        const newCell = newRow.getCell(colNumber);
+
+        // Check if this row contains a category name
+        const firstCellValue = String(
+          sourceRow.getCell(1).value || '',
+        ).trim();
+        let categoryMatched = false;
+
+        for (const [category, value] of Object.entries(categoryTotals)) {
+          if (firstCellValue.includes(category)) {
+            // Fill GL data in the target column
+            if (colNumber === dataColumnIndex) {
+              newCell.value = value;
+              newCell.numFmt = '#,##0';
+              categoryMatched = true;
+              console.log(
+                `   ✓ R${sourceRowNumber}C${colNumber}: "${category}" = ${value.toLocaleString('vi-VN')}`,
+              );
+            } else {
+              // Other columns: copy from template
+              newCell.value = sourceCell.value;
+              newCell.numFmt = sourceCell.numFmt;
+            }
+            break;
           }
-          break;
         }
-      }
+
+        // Non-category rows: copy from template
+        if (!categoryMatched) {
+          newCell.value = sourceCell.value;
+          newCell.numFmt = sourceCell.numFmt;
+        }
+
+        // Copy formatting
+        if (sourceCell.font) newCell.font = { ...sourceCell.font };
+        if (sourceCell.fill) newCell.fill = { ...sourceCell.fill };
+        if (sourceCell.alignment) newCell.alignment = { ...sourceCell.alignment };
+        if (sourceCell.border) newCell.border = { ...sourceCell.border };
+
+        newRow.height = sourceRow.height;
+      });
+
+      rowCount++;
     });
 
-    console.log(`\n✅ Updated ${updateCount} cells in template`);
-    return template;
+    console.log(`\n✅ Created new file with ${rowCount} rows`);
+    return newWorkbook;
   }
 
   /**
-   * Formulas preserved automatically by ExcelJS
-   * When Excel opens file, formulas will recalculate
-   */
-  async recalculateFormulas(workbook: ExcelJS.Workbook): Promise<void> {
-    console.log(
-      '✅ Formulas preserved (will auto-recalculate when opened in Excel)',
-    );
-  }
-
-  /**
-   * Export template with GL data to Excel file
+   * Export new Cashflow file to Excel
    */
   async exportToExcel(
     workbook: ExcelJS.Workbook,
@@ -187,7 +246,7 @@ export class CashflowTemplateService {
     }
 
     await workbook.xlsx.writeFile(outPath);
-    console.log(`✅ Exported: ${outPath}`);
+    console.log(`✅ Exported new Cashflow file: ${outPath}`);
     return outPath;
   }
 }
