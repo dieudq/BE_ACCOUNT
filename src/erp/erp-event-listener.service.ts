@@ -6,7 +6,7 @@ export interface ERPEvent {
   eventId: string;
   eventType: string; // "payment_approved", "payment_rejected", etc.
   timestamp: Date;
-  processId: string; // Quy trình ID từ ERP
+  processId: string; // Process ID from ERP
   data: {
     voucherId?: string;
     amount: number;
@@ -181,16 +181,16 @@ export class ERPEventListenerService {
     });
 
     // Send Telegram notification
-    const message = `✅ PHIẾU CHI TỰ ĐỘNG TỪ ERP
+    const message = `✅ AUTO-GENERATED PAYMENT VOUCHER FROM ERP
 
-🎟️ Phiếu chi: ${phieuChi.phieuChiNumber}
-💰 Số tiền: ${event.data.amount.toLocaleString('vi-VN')} VND
-📝 Nội dung: ${event.data.reason}
-👤 Người phê duyệt: ${event.data.approverName}
-📅 Ngày thanh toán: ${event.data.paymentDate}
+🎟️ Voucher: ${phieuChi.phieuChiNumber}
+💰 Amount: ${event.data.amount.toLocaleString('en-US')} VND
+📝 Description: ${event.data.reason}
+👤 Approved by: ${event.data.approverName}
+📅 Payment Date: ${event.data.paymentDate}
 
-📌 Được tạo tự động từ quy trình ERP
-🔒 Phiếu đã khóa (không sửa)`;
+📌 Auto-created from ERP process
+🔒 Voucher locked (cannot edit)`;
 
     await this.sendTelegramNotification(message);
 
@@ -245,14 +245,14 @@ export class ERPEventListenerService {
     });
 
     // Notify
-    const message = `❌ PHIẾU CHI BỊ TỪ CHỐI
+    const message = `❌ PAYMENT VOUCHER REJECTED
 
-🎟️ Phiếu chi: ${voucher.voucherNumber}
-💰 Số tiền: ${event.data.amount.toLocaleString('vi-VN')} VND
-📝 Nội dung: ${event.data.reason}
-👤 Người từ chối: ${event.data.approverName}
+🎟️ Voucher: ${voucher.voucherNumber}
+💰 Amount: ${event.data.amount.toLocaleString('en-US')} VND
+📝 Description: ${event.data.reason}
+👤 Rejected by: ${event.data.approverName}
 
-⏳ Vui lòng sửa và gửi lại.`;
+⏳ Please revise and resubmit.`;
 
     await this.sendTelegramNotification(message);
 
@@ -285,13 +285,13 @@ export class ERPEventListenerService {
     });
 
     // Notify
-    const message = `✅ QUY TRÌNH HOÀN THÀNH
+    const message = `✅ PROCESS COMPLETED
 
-📌 Mã quy trình: ${event.processId}
-💰 Số tiền: ${event.data.amount.toLocaleString('vi-VN')} VND
-📝 Nội dung: ${event.data.reason}
+📌 Process ID: ${event.processId}
+💰 Amount: ${event.data.amount.toLocaleString('en-US')} VND
+📝 Description: ${event.data.reason}
 
-🎉 Tất cả bước đã hoàn thành!`;
+🎉 All steps completed!`;
 
     await this.sendTelegramNotification(message);
 

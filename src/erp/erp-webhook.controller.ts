@@ -18,11 +18,11 @@ export class ERPWebhookController {
    *   "data": {
    *     "voucherId": "vch_123",
    *     "amount": 1000000,
-   *     "reason": "Chi phí dự án",
-   *     "recipientName": "Nguyễn Văn A",
+   *     "reason": "Project Alpha expenses",
+   *     "recipientName": "John Doe",
    *     "recipientAccount": "0123456789",
    *     "paymentDate": "2026-03-30",
-   *     "approverName": "Phạm Quản Lý"
+   *     "approverName": "Admin Manager"
    *   }
    * }
    */
@@ -90,10 +90,10 @@ export class ERPWebhookController {
         voucherId: 'vch_test_123',
         amount: 1000000,
         reason: 'Test payment from ERP webhook',
-        recipientName: 'Nguyễn Văn A',
+        recipientName: 'John Doe',
         recipientAccount: '0123456789',
         paymentDate: new Date().toISOString().split('T')[0],
-        approverName: 'Phạm Quản Lý',
+        approverName: 'Admin Manager',
       },
     };
 
