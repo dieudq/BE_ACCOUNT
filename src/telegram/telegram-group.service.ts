@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import TelegramBot from 'node-telegram-bot-api';
+import { TelegramService } from './telegram.service';
 
 @Injectable()
 export class TelegramGroupService {
-  constructor(private prisma: PrismaService, private bot: TelegramBot) {}
+  constructor(private prisma: PrismaService, private telegram: TelegramService) {}
 
   /**
    * Register a new group (called when bot receives message in new group)
@@ -58,9 +58,10 @@ export class TelegramGroupService {
     const groups = await this.getActiveGroups();
     console.log(`📢 Broadcasting to ${groups.length} groups...`);
 
+    const bot = this.telegram.getBot();
     for (const group of groups) {
       try {
-        await this.bot.sendMessage(group.chatId, text);
+        await bot.sendMessage(group.chatId, text);
         console.log(`  ✅ Sent to: ${group.chatId} (${group.groupName})`);
       } catch (err) {
         console.error(`  ❌ Failed to send to ${group.chatId}:`, err.message);
