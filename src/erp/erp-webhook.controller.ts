@@ -1,9 +1,13 @@
-import { Controller, Post, Body, HttpCode, Get } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, Get, Param } from '@nestjs/common';
 import { ERPEventListenerService, ERPEvent } from './erp-event-listener.service';
+import { ERPEventSimulatorService } from './erp-event-simulator.service';
 
 @Controller('webhooks/erp')
 export class ERPWebhookController {
-  constructor(private erpEventListener: ERPEventListenerService) {}
+  constructor(
+    private erpEventListener: ERPEventListenerService,
+    private erpSimulator: ERPEventSimulatorService,
+  ) {}
 
   /**
    * Main webhook endpoint for ERP events
@@ -99,5 +103,44 @@ export class ERPWebhookController {
 
     console.log('🧪 Test event:', testEvent);
     return await this.erpEventListener.processEvent(testEvent);
+  }
+
+  /**
+   * Simulator: Start sending fake events every N minutes
+   * POST /webhooks/erp/simulator/start?interval=30
+   */
+  @Post('simulator/start')
+  @HttpCode(200)
+  async startSimulator() {
+    this.erpSimulator.startSimulator(30); // 30 minutes
+    return {
+      status: 'ok',
+      message: 'ERP Event Simulator started (30 minute interval)',
+      timestamp: new Date(),
+    };
+  }
+
+  /**
+   * Simulator: Stop sending fake events
+   * POST /webhooks/erp/simulator/stop
+   */
+  @Post('simulator/stop')
+  @HttpCode(200)
+  async stopSimulator() {
+    this.erpSimulator.stopSimulator();
+    return {
+      status: 'ok',
+      message: 'ERP Event Simulator stopped',
+      timestamp: new Date(),
+    };
+  }
+
+  /**
+   * Simulator: Get status
+   * GET /webhooks/erp/simulator/status
+   */
+  @Get('simulator/status')
+  async simulatorStatus() {
+    return this.erpSimulator.getStatus();
   }
 }
