@@ -87,12 +87,19 @@ export class CashflowTemplateService {
         const srcCell = srcRow.getCell(c);
         const dstCell = dstRow.getCell(c);
 
-        // Copy value, format, alignment
-        dstCell.value = srcCell.value;
-        dstCell.font = { ...srcCell.font };
-        dstCell.fill = { ...srcCell.fill };
-        dstCell.alignment = { ...srcCell.alignment };
-        dstCell.border = { ...srcCell.border };
+        // Copy TEXT only, NOT formulas (avoid shared formula errors)
+        const srcValue = srcCell.value;
+        if (srcValue && typeof srcValue === 'object' && 'formula' in srcValue) {
+          // Skip formulas, copy text instead
+          dstCell.value = srcCell.text || '';
+        } else {
+          dstCell.value = srcValue;
+        }
+        
+        if (srcCell.font) dstCell.font = { ...srcCell.font };
+        if (srcCell.fill) dstCell.fill = { ...srcCell.fill };
+        if (srcCell.alignment) dstCell.alignment = { ...srcCell.alignment };
+        if (srcCell.border) dstCell.border = { ...srcCell.border };
       }
     }
 
@@ -123,12 +130,19 @@ export class CashflowTemplateService {
         const srcCell = srcRow.getCell(c);
         const dstCell = dstRow.getCell(c);
 
-        // Copy text only (no formulas/values)
-        dstCell.value = srcCell.value;
-        dstCell.font = { ...srcCell.font };
-        dstCell.fill = { ...srcCell.fill };
-        dstCell.alignment = { ...srcCell.alignment };
-        dstCell.border = { ...srcCell.border };
+        // Copy TEXT only, NOT formulas (avoid shared formula errors)
+        const srcValue = srcCell.value;
+        if (srcValue && typeof srcValue === 'object' && 'formula' in srcValue) {
+          // Skip formulas, copy text instead
+          dstCell.value = srcCell.text || '';
+        } else {
+          dstCell.value = srcValue;
+        }
+
+        if (srcCell.font) dstCell.font = { ...srcCell.font };
+        if (srcCell.fill) dstCell.fill = { ...srcCell.fill };
+        if (srcCell.alignment) dstCell.alignment = { ...srcCell.alignment };
+        if (srcCell.border) dstCell.border = { ...srcCell.border };
       }
 
       console.log(`   ✓ Row ${item.src} → Row ${destRow}: ${item.name}`);
