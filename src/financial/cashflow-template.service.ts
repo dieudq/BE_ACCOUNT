@@ -173,61 +173,69 @@ export class CashflowTemplateService {
   }
 
   /**
-   * Fill GL data into copied template
-   * Month = 3 (March) → Columns I & J (9 & 10)
-   * Column I = Actual value
+   * Fill GL data for ALL months
+   * For each month, calculate category totals, then fill into corresponding column
    */
-  async fillGLDataIntoTemplate(
+  async fillGLDataForAllMonths(
     workbook: ExcelJS.Workbook,
-    categoryTotals: Map<string, number>,
-    month: number,
+    glByMonth: Map<number, any[]>,
   ): Promise<ExcelJS.Workbook> {
     const worksheet = workbook.getWorksheet('Cashflow_Misa');
     if (!worksheet) {
       throw new Error('Worksheet "Cashflow_Misa" not found');
     }
 
-    console.log(`\n📍 Filling GL data for month ${month}...`);
+    console.log('\n📍 Filling GL data for all months...');
 
-    // Month column mapping (pairs for Actual/Plan)
-    // E=5 for month 1, G=7 for month 2, I=9 for month 3, etc.
-    const monthColActual = 3 + month * 2; // Actual column (E, G, I, K, M...)
-    console.log(
-      `   Target column (Actual): ${String.fromCharCode(64 + monthColActual)} (index ${monthColActual})`,
-    );
+    // For each month in GL data
+    glByMonth.forEach((records, month) => {
+      console.log(`\n   Month ${month}:`);
 
-    let updatedCount = 0;
-
-    // Map each category to its template row
-    categoryTotals.forEach((value, category) => {
-      console.log(`\n   🔍 Looking for category: "${category}"`);
-      // Find row with this category name in Column B
-      let found = false;
-      worksheet.eachRow((row, rowNumber) => {
-        const cellB = row.getCell(2).value; // Column B
-        if (cellB) {
-          const cellBStr = String(cellB).trim();
-          // Match exact category name
-          if (cellBStr === category) {
-            // Fill column with GL value
-            const cell = row.getCell(monthColActual);
-            console.log(`   ✓ Found at R${rowNumber}C${monthColActual}`);
-            console.log(`     Old value: ${cell.value}`);
-            cell.value = value;
-            cell.numFmt = '#,##0';
-            console.log(`     New value: ${value.toLocaleString('vi-VN')}`);
-            updatedCount++;
-            found = true;
-          }
+      // Group records by account (TK đối ứng)
+      const accountTotals = new Map<string, { debit: number; credit: number }>();
+      records.forEach((record: any) => {
+        const account = record.counterAccount as string;
+        if (!accountTotals.has(account)) {
+          accountTotals.set(account, { debit: 0, credit: 0 });
+        }
+        const totals = accountTotals.get(account);
+        if (totals) {
+          totals.debit += (record.debitAmount as number) || 0;
+          totals.credit += (record.creditAmount as number) || 0;
         }
       });
 
-      if (!found) {
-        console.log(`   ⚠️  NOT FOUND: "${category}"`);
-      }
+      // Calculate category totals for this month
+      const categoryTotals = this.calculateCategoryTotals(accountTotals);
+
+      // Fill into template
+      const monthColIndex = 3 + month * 2;
+      console.log(`   Target column: ${String.fromCharCode(64 + monthColIndex)} (index ${monthColIndex})`);
+
+      let updatedCount = 0;
+      categoryTotals.forEach((value, category) => {
+        // Find row with this category name in Column B
+        let found = false;
+        worksheet.eachRow((row, rowNumber) => {
+          const cellB = row.getCell(2).value;
+          if (cellB) {
+            const cellBStr = String(cellB).trim();
+            if (cellBStr === category) {
+              const cell = row.getCell(monthColIndex);
+              console.log(`     ✓ R${rowNumber}: "${category}" = ${value.toLocaleString('vi-VN')}`);
+              cell.value = value;
+              cell.numFmt = '#,##0';
+              updatedCount++;
+              found = true;
+            }
+          }
+        });
+      });
+
+      console.log(`     Updated ${updatedCount} categories`);
     });
 
-    console.log(`\n✅ Updated ${updatedCount} cells with GL data`);
+    console.log(`\n✅ All months filled`);
     return workbook;
   }
 

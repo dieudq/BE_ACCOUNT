@@ -12,13 +12,14 @@ export class GLFileProcessorService {
   ) {}
 
   /**
-   * Process GL file:
+   * Process GL file for ALL months:
    * 1. Parse GL
    * 2. Load template
-   * 3. COPY entire template (all 963 rows × 30 cols)
-   * 4. Calculate GL totals
-   * 5. Fill GL data into template copy
-   * 6. Export
+   * 3. COPY entire template
+   * 4. For each month in GL data:
+   *    - Calculate GL totals for that month
+   *    - Fill into corresponding month column
+   * 5. Export
    */
   async processGLFileAndGenerateCashflow(filePath: string): Promise<string> {
     try {
@@ -28,31 +29,32 @@ export class GLFileProcessorService {
       console.log(`✅ Parsed ${glData.accounts.size} accounts`);
       console.log(`   Period: ${glData.period}`);
 
-      // Extract year/month from period
-      const [year, month] = glData.period.split('-').map(Number);
+      // Extract year from file period
+      const [year] = glData.period.split('-').map(Number);
 
       // Load template
       console.log('📋 Loading template...');
       const template = await this.cashflowTemplate.loadTemplate();
 
-      // Copy entire template structure (all 963 rows × 30 cols)
+      // Copy entire template structure
       console.log('🔄 Copying full template...');
       const copiedTemplate = await this.cashflowTemplate.copyTemplateStructure(
         template,
       );
 
-      // Calculate GL totals
-      console.log('🧮 Calculating GL totals...');
-      const totals = this.cashflowTemplate.calculateCategoryTotals(
-        glData.accounts,
-      );
+      // Group GL records by month
+      console.log('📅 Grouping GL by month...');
+      const glByMonth = this.groupGLByMonth(glData.records);
 
-      // Fill GL data into template copy
-      console.log('📝 Filling GL data...');
-      const filledTemplate = await this.cashflowTemplate.fillGLDataIntoTemplate(
+      console.log(`   Found data for ${glByMonth.size} months:`);
+      glByMonth.forEach((records, month) => {
+        console.log(`     Month ${month}: ${records.length} transactions`);
+      });
+
+      // For each month, calculate totals and fill template
+      const filledTemplate = await this.cashflowTemplate.fillGLDataForAllMonths(
         copiedTemplate,
-        totals,
-        month,
+        glByMonth,
       );
 
       // Export
@@ -61,7 +63,7 @@ export class GLFileProcessorService {
       const outputPath = await this.cashflowTemplate.exportToExcel(
         filledTemplate,
         exportsDir,
-        `cashflow_${year}_${String(month).padStart(2, '0')}_${Date.now()}.xlsx`,
+        `cashflow_${year}_full_${Date.now()}.xlsx`,
       );
 
       console.log(`✅ Processing complete: ${outputPath}`);
@@ -70,5 +72,31 @@ export class GLFileProcessorService {
       console.error('❌ Error processing GL file:', err);
       throw err;
     }
+  }
+
+  /**
+   * Group GL records by month from transaction date
+   * Returns Map<month, records>
+   */
+  private groupGLByMonth(
+    records: any[],
+  ): Map<number, any[]> {
+    const grouped = new Map<number, any[]>();
+
+    records.forEach((record) => {
+      // Extract month from transaction date
+      const date = record.date instanceof Date ? record.date : new Date(record.date);
+      const month = date.getMonth() + 1; // 0-11 → 1-12
+
+      if (!grouped.has(month)) {
+        grouped.set(month, []);
+      }
+      const monthRecords = grouped.get(month);
+      if (monthRecords) {
+        monthRecords.push(record);
+      }
+    });
+
+    return grouped;
   }
 }
