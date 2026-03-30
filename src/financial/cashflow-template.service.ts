@@ -58,7 +58,7 @@ export class CashflowTemplateService {
       throw new Error('No worksheet in template');
     }
 
-    const structure = {
+    const structure: any = {
       sheetName: worksheet.name || 'Cashflow',
       rows: [],
       columns: worksheet.columns || [],
