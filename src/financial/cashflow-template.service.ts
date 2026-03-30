@@ -89,7 +89,8 @@ export class CashflowTemplateService {
 
   /**
    * Copy entire template to new workbook
-   * Preserves ALL structure: all 963 rows, all 30 columns, all formatting
+   * Preserves ALL structure + formatting, but CLEARS old data values
+   * Only headers kept, data cells emptied for GL fill
    */
   async copyTemplateStructure(
     sourceTemplate: ExcelJS.Workbook,
@@ -107,6 +108,7 @@ export class CashflowTemplateService {
     const newSheet = newWorkbook.addWorksheet(sourceSheet.name);
 
     console.log(`   Copying ${sourceSheet.rowCount} rows × ${sourceSheet.columnCount} columns...`);
+    console.log('   Clearing old data values (keeping headers + formatting)...');
 
     // Set column widths
     for (let colIdx = 1; colIdx <= sourceSheet.columnCount; colIdx++) {
@@ -131,10 +133,16 @@ export class CashflowTemplateService {
         const sourceCell = sourceRow.getCell(colIdx);
         const newCell = newRow.getCell(colIdx);
 
-        // Copy value
-        newCell.value = sourceCell.value;
+        // CLEAR data in rows > 2 (rows 1-2 are headers, keep them)
+        // Rows 3+ are data rows, clear old values
+        if (rowNumber > 2) {
+          newCell.value = null; // Clear old data
+        } else {
+          // Keep headers
+          newCell.value = sourceCell.value;
+        }
 
-        // Copy formatting
+        // Copy formatting (always keep formatting)
         if (sourceCell.font) {
           newCell.font = { ...sourceCell.font };
         }
@@ -153,7 +161,7 @@ export class CashflowTemplateService {
       }
     });
 
-    console.log('✅ Full template copied');
+    console.log('✅ Full template copied + old data cleared');
     return newWorkbook;
   }
 
