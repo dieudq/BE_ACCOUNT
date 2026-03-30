@@ -1,0 +1,219 @@
+FULL DANH SÁCH HỆ THỐNG TÀI KHOẢN
+======================================================================================================================================================
+
+R   1: DANH SÁCH HỆ THỐNG TÀI KHOẢN | DANH SÁCH HỆ THỐNG TÀI KHOẢN | DANH SÁCH HỆ THỐNG TÀI KHOẢN | DANH SÁCH HỆ THỐNG TÀI KHOẢN | DANH SÁCH HỆ THỐNG TÀI KHOẢN | DANH SÁCH HỆ THỐNG TÀI KHOẢN
+R   2:                           |                           |                           |                           |                           |                          
+R   3: STT                       | Số tài khoản              | Tên tài khoản             | Tính chất                 | Diễn giải                 | Trạng thái               
+R   4: 1                         | 111                       | Tiền mặt                  | Dư Nợ                     |                           | Đang sử dụng             
+R   5: 2                         | 1111                      | Tiền Việt Nam             | Dư Nợ                     |                           | Đang sử dụng             
+R   6: 3                         | 1112                      | Tiền mặt USD Shinhan      | Dư Nợ                     |                           | Đang sử dụng             
+R   7: 4                         | 1113                      | Tiền mặt Payoneer         | Dư Nợ                     |                           | Đang sử dụng             
+R   8: 5                         | 1114                      | Tiền mặt EUR              | Dư Nợ                     |                           | Đang sử dụng             
+R   9: 6                         | 1115                      | BTC                       | Dư Nợ                     |                           | Đang sử dụng             
+R  10: 7                         | 1116                      | Tiền mặt GBP              | Dư Nợ                     |                           | Đang sử dụng             
+R  11: 8                         | 1117                      | Tiền mặt USDT             | Dư Nợ                     |                           | Đang sử dụng             
+R  12: 9                         | 1118                      | Tiền mặt USD Paypal       | Dư Nợ                     |                           | Đang sử dụng             
+R  13: 10                        | 1119                      | Tiền mặt SGD Payoneer     | Dư Nợ                     |                           | Đang sử dụng             
+R  14: 11                        | 112                       | Tiền gửi Ngân hàng        | Dư Nợ                     |                           | Đang sử dụng             
+R  15: 12                        | 1121                      | Tiền Việt Nam             | Dư Nợ                     |                           | Đang sử dụng             
+R  16: 13                        | 1121.1                    | 19133705866016            | Dư Nợ                     |                           | Đang sử dụng             
+R  17: 14                        | 1121.3                    | 19033705866046            | Dư Nợ                     |                           | Đang sử dụng             
+R  18: 15                        | 1121.5                    | 19033705866021            | Dư Nợ                     |                           | Đang sử dụng             
+R  19: 16                        | 1121.6                    | 19033705866062            | Dư Nợ                     |                           | Đang sử dụng             
+R  20: 17                        | 1121.7                    | 66688866999               | Dư Nợ                     |                           | Đang sử dụng             
+R  21: 18                        | 1121.8                    | 700015035353              | Dư Nợ                     |                           | Đang sử dụng             
+R  22: 19                        | 1122                      | Ngoại tệ                  | Dư Nợ                     |                           | Đang sử dụng             
+R  23: 20                        | 1122.1                    | 700015035411              | Dư Nợ                     |                           | Đang sử dụng             
+R  24: 21                        | 121                       | Chứng khoán kinh doanh    | Dư Nợ                     |                           | Đang sử dụng             
+R  25: 22                        | 128                       | Đầu tư nắm giữ đến ngày đáo hạn | Dư Nợ                     |                           | Đang sử dụng             
+R  26: 23                        | 1281                      | Tiền gửi có kỳ hạn        | Dư Nợ                     |                           | Đang sử dụng             
+R  27: 24                        | 1288                      | Các khoản đầu tư khác nắm giữ đến ngày đáo hạn | Dư Nợ                     |                           | Đang sử dụng             
+R  28: 25                        | 131                       | Phải thu của khách hàng   | Lưỡng tính                |                           | Đang sử dụng             
+R  29: 26                        | 131.1                     | T&M                       | Lưỡng tính                |                           | Đang sử dụng             
+R  30: 27                        | 131.2                     | Fix priced                | Lưỡng tính                |                           | Đang sử dụng             
+R  31: 28                        | 133                       | Thuế GTGT được khấu trừ   | Dư Nợ                     |                           | Đang sử dụng             
+R  32: 29                        | 1331                      | Thuế GTGT được khấu trừ của hàng hóa, dịch vụ | Dư Nợ                     |                           | Đang sử dụng             
+R  33: 30                        | 1332                      | Thuế GTGT được khấu trừ của TSCĐ | Dư Nợ                     |                           | Đang sử dụng             
+R  34: 31                        | 136                       | Phải thu nội bộ           | Dư Nợ                     |                           | Đang sử dụng             
+R  35: 32                        | 1361                      | Vốn kinh doanh ở đơn vị trực thuộc | Dư Nợ                     |                           | Đang sử dụng             
+R  36: 33                        | 1368                      | Phải thu nội bộ khác      | Dư Nợ                     |                           | Đang sử dụng             
+R  37: 34                        | 138                       | Phải thu khác             | Lưỡng tính                |                           | Đang sử dụng             
+R  38: 35                        | 1381                      | Tài sản thiếu chờ xử lý   | Lưỡng tính                |                           | Đang sử dụng             
+R  39: 36                        | 1386                      | Cầm cố, thế chấp, ký quỹ, ký cược | Dư Nợ                     |                           | Đang sử dụng             
+R  40: 37                        | 1388                      | Phải thu khác             | Lưỡng tính                |                           | Đang sử dụng             
+R  41: 38                        | 141                       | Tạm ứng                   | Dư Nợ                     |                           | Đang sử dụng             
+R  42: 39                        | 151                       | Hàng mua đang đi đường    | Dư Nợ                     |                           | Đang sử dụng             
+R  43: 40                        | 152                       | Nguyên liệu, vật liệu     | Dư Nợ                     |                           | Đang sử dụng             
+R  44: 41                        | 153                       | Công cụ, dụng cụ          | Dư Nợ                     |                           | Đang sử dụng             
+R  45: 42                        | 154                       | Chi phí sản xuất, kinh doanh dở dang | Dư Nợ                     |                           | Đang sử dụng             
+R  46: 43                        | 154.1                     | CP NCTT                   | Dư Nợ                     |                           | Đang sử dụng             
+R  47: 44                        | 154.2                     | CP Vendor                 | Dư Nợ                     |                           | Đang sử dụng             
+R  48: 45                        | 154.3                     | Chi phí công tác, công cụ, sự kiện dành cho team dự án | Dư Nợ                     |                           | Đang sử dụng             
+R  49: 46                        | 154.5                     | Chi phí đầu tư đào tạo nhân lực (cử đi đào tạo, học tiếng anh...) | Dư Nợ                     |                           | Đang sử dụng             
+R  50: 47                        | 155                       | Thành phẩm                | Dư Nợ                     |                           | Đang sử dụng             
+R  51: 48                        | 156                       | Hàng hóa                  | Dư Nợ                     |                           | Đang sử dụng             
+R  52: 49                        | 157                       | Hàng gửi đi bán           | Dư Nợ                     |                           | Đang sử dụng             
+R  53: 50                        | 211                       | Tài sản cố định           | Dư Nợ                     |                           | Đang sử dụng             
+R  54: 51                        | 2111                      | TSCĐ hữu hình             | Dư Nợ                     |                           | Đang sử dụng             
+R  55: 52                        | 21111                     | Nhà cửa, vật kiến trúc    | Dư Nợ                     |                           | Đang sử dụng             
+R  56: 53                        | 21112                     | Máy móc thiết bị          | Dư Nợ                     |                           | Đang sử dụng             
+R  57: 54                        | 21113                     | Phương tiện vận tải truyền dẫn | Dư Nợ                     |                           | Đang sử dụng             
+R  58: 55                        | 21114                     | Thiết bị dụng cụ quản lý  | Dư Nợ                     |                           | Đang sử dụng             
+R  59: 56                        | 21115                     | Cây lâu năm, súc vật làm việc và cho sản phẩm | Dư Nợ                     |                           | Đang sử dụng             
+R  60: 57                        | 21116                     | Các TSCĐ là kết cấu hạ tầng, có giá trị lớn do Nhà nước ĐTXD từ NSNN giao cho các tổ chức kinh tế quản lý, khai thác, sử dụng | Dư Nợ                     |                           | Đang sử dụng             
+R  61: 58                        | 21118                     | TSCĐ khác                 | Dư Nợ                     |                           | Đang sử dụng             
+R  62: 59                        | 2112                      | TSCĐ thuê tài chính       | Dư Nợ                     |                           | Đang sử dụng             
+R  63: 60                        | 2113                      | TSCĐ vô hình              | Dư Nợ                     |                           | Đang sử dụng             
+R  64: 61                        | 21131                     | Quyền sử dụng đất         | Dư Nợ                     |                           | Đang sử dụng             
+R  65: 62                        | 21132                     | Quyền phát hành           | Dư Nợ                     |                           | Đang sử dụng             
+R  66: 63                        | 21133                     | Bản quyền, bằng sáng chế  | Dư Nợ                     |                           | Đang sử dụng             
+R  67: 64                        | 21134                     | Nhãn hiệu hàng hóa        | Dư Nợ                     |                           | Đang sử dụng             
+R  68: 65                        | 21135                     | Phần mềm máy vi tính      | Dư Nợ                     |                           | Đang sử dụng             
+R  69: 66                        | 21136                     | Giấy phép và giấy chuyển nhượng quyền | Dư Nợ                     |                           | Đang sử dụng             
+R  70: 67                        | 21138                     | TSCĐ vô hình khác         | Dư Nợ                     |                           | Đang sử dụng             
+R  71: 68                        | 214                       | Hao mòn TSCĐ              | Dư Có                     |                           | Đang sử dụng             
+R  72: 69                        | 2141                      | Hao mòn TSCĐ hữu hình     | Dư Có                     |                           | Đang sử dụng             
+R  73: 70                        | 2142                      | Hao mòn TSCĐ thuê tài chính | Dư Có                     |                           | Đang sử dụng             
+R  74: 71                        | 2143                      | Hao mòn TSCĐ vô hình      | Dư Có                     |                           | Đang sử dụng             
+R  75: 72                        | 2147                      | Hao mòn bất động sản đầu tư | Dư Có                     |                           | Đang sử dụng             
+R  76: 73                        | 217                       | Bất động sản đầu tư       | Dư Nợ                     |                           | Đang sử dụng             
+R  77: 74                        | 228                       | Đầu tư góp vốn vào đơn vị khác | Dư Nợ                     |                           | Đang sử dụng             
+R  78: 75                        | 2281                      | Đầu tư vào công ty liên doanh, liên kết | Dư Nợ                     |                           | Đang sử dụng             
+R  79: 76                        | 2288                      | Đầu tư khác               | Dư Nợ                     |                           | Đang sử dụng             
+R  80: 77                        | 229                       | Dự phòng tổn thất tài sản | Dư Có                     |                           | Đang sử dụng             
+R  81: 78                        | 2291                      | Dự phòng giảm giá chứng khoán kinh doanh | Dư Có                     |                           | Đang sử dụng             
+R  82: 79                        | 2292                      | Dự phòng tổn thất đầu tư vào đơn vị khác | Dư Có                     |                           | Đang sử dụng             
+R  83: 80                        | 2293                      | Dự phòng phải thu khó đòi | Dư Có                     |                           | Đang sử dụng             
+R  84: 81                        | 2294                      | Dự phòng giảm giá hàng tồn kho | Dư Có                     |                           | Đang sử dụng             
+R  85: 82                        | 241                       | Xây dựng cơ bản dở dang   | Dư Nợ                     |                           | Đang sử dụng             
+R  86: 83                        | 2411                      | Mua sắm TSCĐ              | Dư Nợ                     |                           | Đang sử dụng             
+R  87: 84                        | 2412                      | Xây dựng cơ bản           | Dư Nợ                     |                           | Đang sử dụng             
+R  88: 85                        | 2413                      | Sửa chữa lớn TSCĐ         | Dư Nợ                     |                           | Đang sử dụng             
+R  89: 86                        | 242                       | Chi phí thuê nhà          | Dư Nợ                     |                           | Đang sử dụng             
+R  90: 87                        | 331                       | Lương nhân viên thuê nhà cung cấp (vendor) | Lưỡng tính                |                           | Đang sử dụng             
+R  91: 88                        | 333                       | Thuế và các khoản phải nộp Nhà nước | Lưỡng tính                |                           | Đang sử dụng             
+R  92: 89                        | 3331                      | Thuế giá trị gia tăng phải nộp | Lưỡng tính                |                           | Đang sử dụng             
+R  93: 90                        | 33311                     | Thuế phải đóng            | Lưỡng tính                |                           | Đang sử dụng             
+R  94: 91                        | 33312                     | Thuế phải đóng            | Lưỡng tính                |                           | Đang sử dụng             
+R  95: 92                        | 3332                      | Thuế phải đóng            | Lưỡng tính                |                           | Đang sử dụng             
+R  96: 93                        | 3333                      | Thuế phải đóng            | Lưỡng tính                |                           | Đang sử dụng             
+R  97: 94                        | 3334                      | Thuế phải đóng            | Lưỡng tính                |                           | Đang sử dụng             
+R  98: 95                        | 3335                      | Thuế phải đóng            | Lưỡng tính                |                           | Đang sử dụng             
+R  99: 96                        | 3336                      | Thuế phải đóng            | Lưỡng tính                |                           | Đang sử dụng             
+R 100: 97                        | 3337                      | Thuế phải đóng            | Lưỡng tính                |                           | Đang sử dụng             
+R 101: 98                        | 3338                      | Thuế bảo vệ môi trường và các loại thuế khác | Lưỡng tính                |                           | Đang sử dụng             
+R 102: 99                        | 33381                     | Thuế phải đóng            | Lưỡng tính                |                           | Đang sử dụng             
+R 103: 100                       | 33382                     | Thuế phải đóng            | Lưỡng tính                |                           | Đang sử dụng             
+R 104: 101                       | 3339                      | Thuế phải đóng            | Lưỡng tính                |                           | Đang sử dụng             
+R 105: 102                       | 334                       | Phải trả người lao động   | Dư Có                     |                           | Đang sử dụng             
+R 106: 103                       | 334-10                    | Thưởng MKT                | Dư Có                     |                           | Đang sử dụng             
+R 107: 104                       | 334-11                    | Thưởng kinh doanh         | Dư Có                     |                           | Đang sử dụng             
+R 108: 105                       | 334-12                    | Thưởng kế toán            | Dư Có                     |                           | Đang sử dụng             
+R 109: 106                       | 334.1                     | Lương nhân viên nội bộ    | Dư Có                     |                           | Đang sử dụng             
+R 110: 107                       | 334.2                     | Lương nhân viên thuê ngoài trực tiếp (freelancer) | Dư Có                     |                           | Đang sử dụng             
+R 111: 108                       | 334.3                     | Lương nhân viên kế toán   | Dư Có                     |                           | Đang sử dụng             
+R 112: 109                       | 334.4                     | Thưởng bonus dự án        | Dư Có                     |                           | Đang sử dụng             
+R 113: 110                       | 334.5                     | Lương nhân viên nhân sự   | Dư Có                     |                           | Đang sử dụng             
+R 114: 111                       | 334.6                     | Lương nhân viên sales     | Dư Có                     |                           | Đang sử dụng             
+R 115: 112                       | 334.7                     | Lương nhân viên MKT       | Dư Có                     |                           | Đang sử dụng             
+R 116: 113                       | 334.8                     | Lương CSH                 | Dư Có                     |                           | Đang sử dụng             
+R 117: 114                       | 334.9                     | Chi phí tuyển dụng (Bonus tuyển dụng, Thuê dịch vụ …) | Dư Có                     |                           | Đang sử dụng             
+R 118: 115                       | 335                       | Chi phí phải trả          | Dư Có                     |                           | Đang sử dụng             
+R 119: 116                       | 336                       | Phải trả nội bộ           | Dư Có                     |                           | Đang sử dụng             
+R 120: 117                       | 3361                      | Phải trả nội bộ về vốn kinh doanh | Dư Có                     |                           | Đang sử dụng             
+R 121: 118                       | 3368                      | Phải trả nội bộ khác      | Dư Có                     |                           | Đang sử dụng             
+R 122: 119                       | 338                       | Phải trả, phải nộp khác   | Lưỡng tính                |                           | Đang sử dụng             
+R 123: 120                       | 3381                      | Tài sản thừa chờ giải quyết | Lưỡng tính                |                           | Đang sử dụng             
+R 124: 121                       | 3382                      | Kinh phí công đoàn        | Lưỡng tính                |                           | Đang sử dụng             
+R 125: 122                       | 3383                      | Bảo hiểm xã hội           | Lưỡng tính                |                           | Đang sử dụng             
+R 126: 123                       | 3384                      | Bảo hiểm y tế             | Lưỡng tính                |                           | Đang sử dụng             
+R 127: 124                       | 3385                      | Bảo hiểm thất nghiệp      | Lưỡng tính                |                           | Đang sử dụng             
+R 128: 125                       | 3386                      | Nhận ký quỹ, ký cược      | Lưỡng tính                |                           | Đang sử dụng             
+R 129: 126                       | 3387                      | Doanh thu chưa thực hiện  | Lưỡng tính                |                           | Đang sử dụng             
+R 130: 127                       | 3388                      | Phải trả, phải nộp khác   | Lưỡng tính                |                           | Đang sử dụng             
+R 131: 128                       | 341                       | Vay và nợ thuê tài chính  | Dư Có                     |                           | Đang sử dụng             
+R 132: 129                       | 3411                      | Các khoản đi vay          | Dư Có                     |                           | Đang sử dụng             
+R 133: 130                       | 3412                      | Nợ thuê tài chính         | Dư Có                     |                           | Đang sử dụng             
+R 134: 131                       | 352                       | Dự phòng phải trả         | Dư Có                     |                           | Đang sử dụng             
+R 135: 132                       | 3521                      | Dự phòng bảo hành sản phẩm hàng hóa | Dư Có                     |                           | Đang sử dụng             
+R 136: 133                       | 3522                      | Dự phòng bảo hành công trình xây dựng | Dư Có                     |                           | Đang sử dụng             
+R 137: 134                       | 3524                      | Dự phòng phải trả khác    | Dư Có                     |                           | Đang sử dụng             
+R 138: 135                       | 353                       | Quỹ khen thưởng, phúc lợi | Dư Có                     |                           | Đang sử dụng             
+R 139: 136                       | 3531                      | Quỹ khen thưởng           | Dư Có                     |                           | Đang sử dụng             
+R 140: 137                       | 3532                      | Quỹ phúc lợi              | Dư Có                     |                           | Đang sử dụng             
+R 141: 138                       | 3533                      | Quỹ phúc lợi đã hình thành TSCĐ | Dư Có                     |                           | Đang sử dụng             
+R 142: 139                       | 3534                      | Quỹ thưởng ban quản lý điều hành công ty | Dư Có                     |                           | Đang sử dụng             
+R 143: 140                       | 356                       | Quỹ phát triển khoa học và công nghệ | Dư Có                     |                           | Đang sử dụng             
+R 144: 141                       | 3561                      | Quỹ phát triển khoa học và công nghệ | Dư Có                     |                           | Đang sử dụng             
+R 145: 142                       | 3562                      | Quỹ phát triển khoa học và công nghệ đã hình thành TSCĐ | Dư Có                     |                           | Đang sử dụng             
+R 146: 143                       | 411                       | Vốn đầu tư của chủ sở hữu | Dư Có                     |                           | Đang sử dụng             
+R 147: 144                       | 4111                      | Vốn góp của chủ sở hữu    | Dư Có                     |                           | Đang sử dụng             
+R 148: 145                       | 4112                      | Thặng dư vốn cổ phần      | Dư Có                     |                           | Đang sử dụng             
+R 149: 146                       | 4118                      | Vốn khác                  | Dư Có                     |                           | Đang sử dụng             
+R 150: 147                       | 413                       | Chênh lệch tỷ giá hối đoái | Lưỡng tính                |                           | Đang sử dụng             
+R 151: 148                       | 418                       | Các quỹ thuộc vốn chủ sở hữu | Dư Có                     |                           | Đang sử dụng             
+R 152: 149                       | 419                       | Cổ phiếu quỹ              | Dư Nợ                     |                           | Đang sử dụng             
+R 153: 150                       | 421                       | Lợi nhuận sau thuế chưa phân phối | Lưỡng tính                |                           | Đang sử dụng             
+R 154: 151                       | 4211                      | Lợi nhuận sau thuế chưa phân phối năm trước | Lưỡng tính                |                           | Đang sử dụng             
+R 155: 152                       | 4212                      | Lợi nhuận sau thuế chưa phân phối năm nay | Lưỡng tính                |                           | Đang sử dụng             
+R 156: 153                       | 511                       | Doanh thu bán hàng và cung cấp dịch vụ | Lưỡng tính                |                           | Đang sử dụng             
+R 157: 154                       | 5111                      | Doanh thu bán hàng hóa    | Lưỡng tính                |                           | Đang sử dụng             
+R 158: 155                       | 5112                      | Doanh thu bán thành phẩm  | Lưỡng tính                |                           | Đang sử dụng             
+R 159: 156                       | 5113                      | Doanh thu cung cấp dịch vụ | Lưỡng tính                |                           | Đang sử dụng             
+R 160: 157                       | 5113.1                    | --T&M                     | Lưỡng tính                |                           | Đang sử dụng             
+R 161: 158                       | 5113.2                    | -- Fixed Price            | Lưỡng tính                |                           | Đang sử dụng             
+R 162: 159                       | 5118                      | Doanh thu khác            | Lưỡng tính                |                           | Đang sử dụng             
+R 163: 160                       | 515                       | Doanh thu hoạt động tài chính | Lưỡng tính                |                           | Đang sử dụng             
+R 164: 161                       | 515.1                     | Lãi CLTG thanh toán       | Lưỡng tính                |                           | Đang sử dụng             
+R 165: 162                       | 515.2                     | Doanh thu hoạt động tài chính | Lưỡng tính                |                           | Đang sử dụng             
+R 166: 163                       | 515.3                     | Thu đầu tư tài chính, tiết kiệm | Lưỡng tính                |                           | Đang sử dụng             
+R 167: 164                       | 515.4                     | Lãi CLTG rút tiền         | Lưỡng tính                |                           | Đang sử dụng             
+R 168: 165                       | 515.5                     | Doanh thu đầu tư R&D      | Lưỡng tính                |                           | Đang sử dụng             
+R 169: 166                       | 611                       | Mua hàng                  | Lưỡng tính                |                           | Đang sử dụng             
+R 170: 167                       | 631                       | Giá thành sản xuất        | Lưỡng tính                |                           | Đang sử dụng             
+R 171: 168                       | 632                       | Giá vốn hàng bán          | Lưỡng tính                |                           | Đang sử dụng             
+R 172: 169                       | 635                       | Chi phí tài chính         | Lưỡng tính                |                           | Đang sử dụng             
+R 173: 170                       | 635.1                     | Lỗ CLTG thanh toán        | Lưỡng tính                |                           | Đang sử dụng             
+R 174: 171                       | 635.2                     | Lỗ CLTG rút tiền          | Lưỡng tính                |                           | Đang sử dụng             
+R 175: 172                       | 642                       | Chi phí quản lý kinh doanh | Lưỡng tính                |                           | Đang sử dụng             
+R 176: 173                       | 6421                      | Chi phí bán hàng          | Lưỡng tính                |                           | Đang sử dụng             
+R 177: 174                       | 6421-10                   | Các CP khác (hạ tầng, công cụ phục vụ...) (team marketing) | Lưỡng tính                |                           | Đang sử dụng             
+R 178: 175                       | 6421-11                   | Chi phí đầu tư mua sắm bổ sung máy móc | Lưỡng tính                |                           | Đang sử dụng             
+R 179: 176                       | 6421-12                   | Chi phí tuyển dụng (Bonus tuyển dụng, Thuê dịch vụ …) | Lưỡng tính                |                           | Đang sử dụng             
+R 180: 177                       | 6421-13                   | Thưởng MKT                | Lưỡng tính                |                           | Đang sử dụng             
+R 181: 178                       | 6421-14                   | Thưởng kinh doanh         | Lưỡng tính                |                           | Đang sử dụng             
+R 182: 179                       | 6421-15                   | Lương NV Marketing        | Lưỡng tính                |                           | Đang sử dụng             
+R 183: 180                       | 6421-16                   | Lương PM                  | Lưỡng tính                |                           | Đang sử dụng             
+R 184: 181                       | 6421-17                   | Chi phí đầu tư đào tạo nhân lực (cử đi đào tạo, học tiếng anh...) | Lưỡng tính                |                           | Đang sử dụng             
+R 185: 182                       | 6421-18                   | Thưởng dự án              | Lưỡng tính                |                           | Đang sử dụng             
+R 186: 183                       | 6421-19                   | Commision sales           | Lưỡng tính                |                           | Đang sử dụng             
+R 187: 184                       | 6421.1                    | ISO                       | Lưỡng tính                |                           | Đang sử dụng             
+R 188: 185                       | 6421.2                    | Lương/Thưởng cho bộ phận HCNS | Lưỡng tính                |                           | Đang sử dụng             
+R 189: 186                       | 6421.3                    | Lương NV Sales            | Lưỡng tính                |                           | Đang sử dụng             
+R 190: 187                       | 6421.4                    | Công cụ phục vụ Sales     | Lưỡng tính                |                           | Đang sử dụng             
+R 191: 188                       | 6421.5                    | Tiếp khách Sales          | Lưỡng tính                |                           | Đang sử dụng             
+R 192: 189                       | 6421.6                    | Công tác (sales)          | Lưỡng tính                |                           | Đang sử dụng             
+R 193: 190                       | 6421.7                    | Hội phí tham gia các tổ chức hiệp hội | Lưỡng tính                |                           | Đang sử dụng             
+R 194: 191                       | 6421.8                    | Công tác (team marketing) | Lưỡng tính                |                           | Đang sử dụng             
+R 195: 192                       | 6421.9                    | Event marketing           | Lưỡng tính                |                           | Đang sử dụng             
+R 196: 193                       | 6422                      | Chi phí quản lý doanh nghiệp | Lưỡng tính                |                           | Đang sử dụng             
+R 197: 194                       | 6422-10                   | Chi phí Google Workspace  | Lưỡng tính                |                           | Đang sử dụng             
+R 198: 195                       | 6422-11                   | Chi phí thuê Cloud Server (Amazon, DO, Vultr…) | Lưỡng tính                |                           | Đang sử dụng             
+R 199: 196                       | 6422-12                   | Chi phí đầu tư Singapore  | Lưỡng tính                |                           | Đang sử dụng             
+R 200: 197                       | 6422-13                   | Chi phí thuê nhà          | Lưỡng tính                |                           | Đang sử dụng             
+R 201: 198                       | 6422-14                   | Chi CSH                   | Lưỡng tính                |                           | Đang sử dụng             
+R 202: 199                       | 6422-15                   | Jira ATLASSIAN            | Lưỡng tính                |                           | Đang sử dụng             
+R 203: 200                       | 6422.2                    | Dịch vụ/Điện/Nước/Gửi xe... | Lưỡng tính                |                           | Đang sử dụng             
+R 204: 201                       | 6422.3                    | Chi phí mua sắm, phục vụ văn phòng cơ bản | Lưỡng tính                |                           | Đang sử dụng             
+R 205: 202                       | 6422.4                    | Chi phí quản lý           | Lưỡng tính                |                           | Đang sử dụng             
+R 206: 203                       | 6422.5                    | Các chi phí hoạt động nội bộ | Lưỡng tính                |                           | Đang sử dụng             
+R 207: 204                       | 6422.6                    | Lương bộ phận kế toán     | Lưỡng tính                |                           | Đang sử dụng             
+R 208: 205                       | 6422.7                    | Chi phí xử lý thuế, các vấn đề về kế toán (nếu có) | Lưỡng tính                |                           | Đang sử dụng             
+R 209: 206                       | 6422.8                    | BH Tự nguyện              | Lưỡng tính                |                           | Đang sử dụng             
+R 210: 207                       | 6422.9                    | Thưởng kế toán            | Lưỡng tính                |                           | Đang sử dụng             
+R 211: 208                       | 711                       | Thu nhập khác             | Lưỡng tính                |                           | Đang sử dụng             
+R 212: 209                       | 711.1                     | Thu từ khấu trừ thuế CTV  | Lưỡng tính                |                           | Đang sử dụng             
+R 213: 210                       | 711.2                     | Thu hoàn lương, cp gửi xe chi hộ, hoàn mua hộ cho KH, hoàn tiền chi hộ cho ds đính kèm hoạt động NB | Lưỡng tính                |                           | Đang sử dụng             
+R 214: 211                       | 811                       | Các khoản chi khác (cho vay, tín dụng,...) | Lưỡng tính                |                           | Đang sử dụng             
+R 215: 212                       | 821                       | Chi phí thuế thu nhập doanh nghiệp | Lưỡng tính                |                           | Đang sử dụng             
+R 216: 213                       | 911                       | Xác định kết quả kinh doanh | Lưỡng tính                |                           | Đang sử dụng             
