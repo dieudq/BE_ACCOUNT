@@ -97,7 +97,11 @@ export class TelegramController {
 
       // Process GL file → Generate Cashflow Excel
       console.log(`🧮 Processing GL file...`);
-      const cashflowPath = await this.glProcessor.processGLFileAndGenerateCashflow(filepath);
+      const coaPath = path.join(process.cwd(), 'templates/Danh_sach_he_thong_tai_khoan.xlsx');
+      const cashflowPath = await this.glProcessor.processGLFileAndGenerateCashflow(
+        filepath,
+        coaPath,
+      );
 
       console.log(`✅ Cashflow generated: ${cashflowPath}`);
 

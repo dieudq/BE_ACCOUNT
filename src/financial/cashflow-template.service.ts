@@ -173,25 +173,31 @@ export class CashflowTemplateService {
   }
 
   /**
-   * Fill GL data for ALL months
-   * For each month, calculate category totals, then fill into corresponding column
+   * Fill GL data with category mapping (using Danh sách)
+   * For each month:
+   * - Group GL transactions by counterAccount
+   * - Map counterAccount → Category (using ChartOfAccountsService)
+   * - Sum Debit (+) and Credit (-)
+   * - Fill into category row
    */
-  async fillGLDataForAllMonths(
+  async fillGLDataWithCategoryMapping(
     workbook: ExcelJS.Workbook,
     glByMonth: Map<number, any[]>,
+    chartOfAccountsService: any, // ChartOfAccountsService
+    categoryRowMapping: Map<string, number>,
   ): Promise<ExcelJS.Workbook> {
     const worksheet = workbook.getWorksheet('Cashflow_Misa');
     if (!worksheet) {
       throw new Error('Worksheet "Cashflow_Misa" not found');
     }
 
-    console.log('\n📍 Filling GL data for all months...');
+    console.log('\n📍 Filling GL data with category mapping...');
 
     // For each month in GL data
     glByMonth.forEach((records, month) => {
       console.log(`\n   Month ${month}:`);
 
-      // Group records by account (TK đối ứng)
+      // Group records by counterAccount
       const accountTotals = new Map<string, { debit: number; credit: number }>();
       records.forEach((record: any) => {
         const account = record.counterAccount as string;
@@ -200,42 +206,62 @@ export class CashflowTemplateService {
         }
         const totals = accountTotals.get(account);
         if (totals) {
+          // Debit (Phát sinh Nợ) = +incoming
+          // Credit (Phát sinh Có) = -outgoing
           totals.debit += (record.debitAmount as number) || 0;
           totals.credit += (record.creditAmount as number) || 0;
         }
       });
 
-      // Calculate category totals for this month
-      const categoryTotals = this.calculateCategoryTotals(accountTotals);
+      // Map accounts to categories
+      const categoryTotals = new Map<string, number>();
+      accountTotals.forEach((amounts, account) => {
+        // Map account to category
+        const category = chartOfAccountsService.mapAccountToCategory(account);
 
-      // Fill into template
-      const monthColIndex = 3 + month * 2;
-      console.log(`   Target column: ${String.fromCharCode(64 + monthColIndex)} (index ${monthColIndex})`);
+        // Calculate net: Debit - Credit
+        const net = amounts.debit - amounts.credit;
 
-      let updatedCount = 0;
-      categoryTotals.forEach((value, category) => {
-        // Find row with this category name in Column B
-        let found = false;
-        worksheet.eachRow((row, rowNumber) => {
-          const cellB = row.getCell(2).value;
-          if (cellB) {
-            const cellBStr = String(cellB).trim();
-            if (cellBStr === category) {
-              const cell = row.getCell(monthColIndex);
-              console.log(`     ✓ R${rowNumber}: "${category}" = ${value.toLocaleString('vi-VN')}`);
-              cell.value = value;
-              cell.numFmt = '#,##0';
-              updatedCount++;
-              found = true;
-            }
-          }
-        });
+        console.log(
+          `     Account ${account} → ${category}: Debit=${amounts.debit}, Credit=${amounts.credit}, Net=${net}`,
+        );
+
+        // Sum by category
+        if (!categoryTotals.has(category)) {
+          categoryTotals.set(category, 0);
+        }
+        categoryTotals.set(category, (categoryTotals.get(category) || 0) + net);
       });
 
-      console.log(`     Updated ${updatedCount} categories`);
+      // Month column index
+      const monthColIndex = 3 + month * 2;
+      console.log(
+        `   Target column: ${String.fromCharCode(64 + monthColIndex)} (index ${monthColIndex})`,
+      );
+
+      // Fill into template rows by category
+      let updatedCount = 0;
+      categoryTotals.forEach((value, category) => {
+        const rowNumber = categoryRowMapping.get(category);
+        if (rowNumber) {
+          const cell = worksheet.getRow(rowNumber).getCell(monthColIndex);
+          console.log(
+            `     ✓ R${rowNumber}C${monthColIndex}: "${category}" = ${value.toLocaleString(
+              'vi-VN',
+            )}`,
+          );
+          cell.value = value;
+          cell.numFmt = '#,##0';
+          updatedCount++;
+        } else {
+          console.log(`     ⚠️  Category "${category}" not found in template mapping`);
+        }
+      });
+
+      console.log(`     Updated ${updatedCount} cells`);
     });
 
-    console.log(`\n✅ All months filled`);
+    console.log(`\n✅ All months filled with category mapping`);
     return workbook;
   }
 

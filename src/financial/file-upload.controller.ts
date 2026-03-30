@@ -60,8 +60,10 @@ export class FileUploadController {
       console.log(`📥 Received file: ${file.originalname} (${file.size} bytes)`);
 
       // Process GL file and generate Cashflow
+      const coaPath = path.join(process.cwd(), 'templates/Danh_sach_he_thong_tai_khoan.xlsx');
       const outputPath = await this.glProcessor.processGLFileAndGenerateCashflow(
         file.path,
+        coaPath,
       );
 
       // Send file as download

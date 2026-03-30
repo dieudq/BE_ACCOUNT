@@ -1,36 +1,56 @@
 import { Injectable } from '@nestjs/common';
 import * as path from 'path';
-import * as fs from 'fs';
-import { GLFileParserService, ParsedGLData } from './gl-file-parser.service';
+import { GLFileParserService } from './gl-file-parser.service';
 import { CashflowTemplateService } from './cashflow-template.service';
+import { ChartOfAccountsService } from './chart-of-accounts.service';
 
 @Injectable()
 export class GLFileProcessorService {
   constructor(
     private glParser: GLFileParserService,
     private cashflowTemplate: CashflowTemplateService,
+    private chartOfAccounts: ChartOfAccountsService,
   ) {}
 
   /**
    * Process GL file for ALL months:
    * 1. Parse GL
-   * 2. Load template
-   * 3. COPY entire template
-   * 4. For each month in GL data:
+   * 2. Load Danh sách (Chart of Accounts)
+   * 3. Build category mapping
+   * 4. Load template
+   * 5. For each month in GL data:
    *    - Calculate GL totals for that month
-   *    - Fill into corresponding month column
-   * 5. Export
+   *    - Map GL accounts to Cashflow categories using Danh sách
+   *    - Fill into corresponding category rows
+   * 6. Export
+   * 
+   * Debit (Phát sinh Nợ) = + (revenue/incoming)
+   * Credit (Phát sinh Có) = - (expense/outgoing)
    */
-  async processGLFileAndGenerateCashflow(filePath: string): Promise<string> {
+  async processGLFileAndGenerateCashflow(
+    glFilePath: string,
+    coaFilePath: string,
+  ): Promise<string> {
     try {
       console.log('📖 Parsing GL file...');
-      const glData = await this.glParser.parseGLFile(filePath);
+      const glData = await this.glParser.parseGLFile(glFilePath);
 
       console.log(`✅ Parsed ${glData.accounts.size} accounts`);
       console.log(`   Period: ${glData.period}`);
 
       // Extract year from file period
       const [year] = glData.period.split('-').map(Number);
+
+      // Load Chart of Accounts (Danh sách)
+      console.log('📋 Loading Chart of Accounts (Danh sách)...');
+      const coa = await this.chartOfAccounts.loadChartOfAccounts(coaFilePath);
+
+      // Build category row mapping
+      console.log('🗺️  Building category → row mapping...');
+      const templatePath = path.join(process.cwd(), 'templates/2026_TWD_s_Cashflows_Report.xlsx');
+      const categoryRowMapping = await this.chartOfAccounts.buildCategoryRowMapping(
+        templatePath,
+      );
 
       // Load template
       console.log('📋 Loading template...');
@@ -51,10 +71,13 @@ export class GLFileProcessorService {
         console.log(`     Month ${month}: ${records.length} transactions`);
       });
 
-      // For each month, calculate totals and fill template
-      const filledTemplate = await this.cashflowTemplate.fillGLDataForAllMonths(
+      // Fill template for all months with category mapping
+      console.log('💾 Filling template with mapped GL data...');
+      const filledTemplate = await this.cashflowTemplate.fillGLDataWithCategoryMapping(
         copiedTemplate,
         glByMonth,
+        this.chartOfAccounts,
+        categoryRowMapping,
       );
 
       // Export
