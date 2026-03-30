@@ -12,13 +12,13 @@ export class GLFileProcessorService {
   ) {}
 
   /**
-   * Process uploaded GL file → Parse → Create New Cashflow File → Export Excel
+   * Process uploaded GL file → Parse → Fill Template → Export Excel
    * 
    * LOGIC:
-   * 1. Parse GL file (extract account data)
-   * 2. Load template as reference (structure/format only)
-   * 3. Create NEW Excel file (not copy of template)
-   * 4. Fill NEW file with GL calculations + template formatting
+   * 1. Parse GL file (extract account data by code)
+   * 2. Load template (preserve structure + formulas)
+   * 3. Calculate GL totals by category (515.x, 635.x, etc.)
+   * 4. Fill template with GL values in correct rows/columns
    * 5. Export
    */
   async processGLFileAndGenerateCashflow(filePath: string): Promise<string> {
@@ -32,24 +32,29 @@ export class GLFileProcessorService {
       // Extract year/month from period
       const [year, month] = glData.period.split('-').map(Number);
 
-      // Load template as reference
-      console.log('📋 Loading template as reference...');
-      const templateRef = await this.cashflowTemplate.loadTemplateAsReference();
+      // Load template (preserve all structure)
+      console.log('📋 Loading template...');
+      const template = await this.cashflowTemplate.loadTemplate();
 
-      // Create NEW Cashflow file with GL data
-      console.log('📝 Creating NEW Cashflow file...');
-      const newWorkbook = await this.cashflowTemplate.createNewCashflowFile(
-        templateRef,
+      // Calculate GL totals
+      console.log('🧮 Calculating GL totals...');
+      const totals = this.cashflowTemplate.calculateCategoryTotals(
         glData.accounts,
-        year,
+      );
+
+      // Fill template with GL data
+      console.log('📝 Filling template with GL data...');
+      const filledTemplate = await this.cashflowTemplate.fillTemplateWithGLData(
+        template,
+        totals,
         month,
       );
 
-      // Export new file
+      // Export
       console.log('💾 Exporting to Excel...');
       const exportsDir = path.join(process.cwd(), 'exports');
       const outputPath = await this.cashflowTemplate.exportToExcel(
-        newWorkbook,
+        filledTemplate,
         exportsDir,
         `cashflow_${year}_${String(month).padStart(2, '0')}_${Date.now()}.xlsx`,
       );
