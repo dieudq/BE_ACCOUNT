@@ -3,6 +3,7 @@ import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VoucherAutomationService } from '../vouchers/voucher-automation.service';
 import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
+import { BotCommandService } from './bot-command.service';
 import TelegramBot from 'node-telegram-bot-api';
 import axios from 'axios';
 
@@ -17,6 +18,7 @@ export class TelegramService implements OnModuleInit {
     private prisma: PrismaService,
     private voucherAutomation: VoucherAutomationService,
     private approvalWorkflow: ApprovalWorkflowService,
+    private commandService: BotCommandService,
   ) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
@@ -95,7 +97,51 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
-      // PHASE 4: Approval commands
+      // === HANDLE BOT COMMANDS (8 standard commands) ===
+      const cmd = message.trim().toLowerCase().split(' ')[0];
+      const args = message.trim().split(' ').slice(1);
+
+      if (cmd === '/start') {
+        await this.commandService.handleStart(this.bot, chatId);
+        return;
+      }
+
+      if (cmd === '/help') {
+        await this.commandService.handleHelp(this.bot, chatId);
+        return;
+      }
+
+      if (cmd === '/report') {
+        await this.commandService.handleReport(this.bot, chatId, args);
+        return;
+      }
+
+      if (cmd === '/approvals') {
+        await this.commandService.handleApprovals(this.bot, chatId);
+        return;
+      }
+
+      if (cmd === '/vouchers') {
+        await this.commandService.handleVouchers(this.bot, chatId);
+        return;
+      }
+
+      if (cmd === '/balance') {
+        await this.commandService.handleBalance(this.bot, chatId, args);
+        return;
+      }
+
+      if (cmd === '/export') {
+        await this.commandService.handleExport(this.bot, chatId, args);
+        return;
+      }
+
+      if (cmd === '/status') {
+        await this.commandService.handleStatus(this.bot, chatId);
+        return;
+      }
+
+      // === LEGACY COMMANDS (Phase 3-4 compatibility) ===
       if (message.startsWith('APPROVE ')) {
         const requestId = message.substring(8).trim();
         const result = await this.approvalWorkflow.approveVoucher(userIdForQuery, requestId);
