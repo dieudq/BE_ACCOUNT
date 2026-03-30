@@ -25,7 +25,11 @@ export interface ParsedGLData {
 export class GLFileParserService {
   /**
    * Parse GL Account Detail Excel file
-   * Expected columns: Ngày hạch toán | Ngày chứng từ | Số chứng từ | Diễn giải | TK đối ứng | Phát sinh Nợ | Phát sinh Có
+   * Format: Single account header (Tài khoản: 1111) + all transactions
+   * Extract counter-account (TK đối ứng) to categorize expenses/revenue
+   * 
+   * Column mapping:
+   * 1=Ngày hạch toán, 2=Ngày chứng từ, 3=Số chứng từ, 4=Diễn giải, 5=TK đối ứng, 6=Phát sinh Nợ, 7=Phát sinh Có
    */
   async parseGLFile(filePath: string): Promise<ParsedGLData> {
     const workbook = new ExcelJS.Workbook();
@@ -45,7 +49,6 @@ export class GLFileParserService {
     };
 
     let headerRow = 0;
-    let currentAccount = '';
 
     // Scan rows to find headers and extract data
     worksheet.eachRow((row, rowNumber) => {
@@ -57,66 +60,66 @@ export class GLFileParserService {
       // Look for header row (contains "Ngày hạch toán")
       if (!headerRow && values.some((v) => String(v).includes('Ngày hạch toán'))) {
         headerRow = rowNumber;
+        console.log(`   Found header at row ${headerRow}`);
         return;
       }
 
-      // Extract period info from header rows (e.g., "Loại tiền: <<Tổng hợp>>, Tháng 1 năm 2026")
-      if (!data.period && values.some((v) => String(v).includes('Tháng'))) {
-        const periodStr = String(values[1] || values[2]);
+      // Extract period info from row 2 (e.g., "Loại tiền: <<Tổng hợp>>, Tháng 1 năm 2026")
+      if (!data.period && rowNumber === 2) {
+        const periodStr = String(values[1] || values[2] || '');
         const match = periodStr.match(/Tháng (\d+) năm (\d+)/);
         if (match) {
           data.period = `${match[2]}-${String(match[1]).padStart(2, '0')}`;
+          console.log(`   Period: ${data.period}`);
         }
       }
 
       // Skip rows before header
       if (!headerRow || rowNumber <= headerRow) return;
 
-      // Extract account headers (e.g., "Tài khoản: 1111")
-      if (values[1] && String(values[1]).includes('Tài khoản:')) {
-        const match = String(values[1]).match(/Tài khoản:\s*(\d+[.\d]*)/);
-        if (match) {
-          currentAccount = match[1];
-          if (!data.accounts.has(currentAccount)) {
-            data.accounts.set(currentAccount, { debit: 0, credit: 0 });
-          }
-        }
-        return;
-      }
-
       // Extract GL transaction data
-      if (currentAccount && values.length >= 7) {
+      // Values: [date, voucherDate, voucherNo, description, counterAccount, debit, credit]
+      if (values.length >= 7) {
         const dateVal = values[1];
         const voucherDateVal = values[2];
         const voucherNo = String(values[3] || '');
         const description = String(values[4] || '');
-        const counterAccount = String(values[5] || '');
+        const counterAccount = String(values[5] || '').trim(); // TK đối ứng
         const debitStr = String(values[6] || '0');
         const creditStr = String(values[7] || '0');
 
-        // Parse amounts (remove commas, convert to number)
+        // Parse amounts
         const debitAmount = this.parseAmount(debitStr);
         const creditAmount = this.parseAmount(creditStr);
 
-        if (debitAmount > 0 || creditAmount > 0) {
-          const record: GLAccountRecord = {
-            date: this.parseDate(dateVal),
-            voucherDate: this.parseDate(voucherDateVal),
-            voucherNo,
-            description,
-            counterAccount,
-            debitAmount,
-            creditAmount,
-          };
+        // Skip empty rows / summary rows
+        if (!counterAccount || (debitAmount === 0 && creditAmount === 0)) {
+          return;
+        }
 
-          data.records.push(record);
+        // Use counter-account as the GL account key
+        // This groups all GL transactions by their opposing account
+        if (!data.accounts.has(counterAccount)) {
+          data.accounts.set(counterAccount, { debit: 0, credit: 0 });
+        }
 
-          // Aggregate by account
-          const account = data.accounts.get(currentAccount);
-          if (account) {
-            account.debit += debitAmount;
-            account.credit += creditAmount;
-          }
+        const record: GLAccountRecord = {
+          date: this.parseDate(dateVal),
+          voucherDate: this.parseDate(voucherDateVal),
+          voucherNo,
+          description,
+          counterAccount,
+          debitAmount,
+          creditAmount,
+        };
+
+        data.records.push(record);
+
+        // Aggregate by counter-account
+        const account = data.accounts.get(counterAccount);
+        if (account) {
+          account.debit += debitAmount;
+          account.credit += creditAmount;
         }
       }
     });
