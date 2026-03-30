@@ -3,21 +3,24 @@ import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import * as fs from 'fs';
 
+export interface GLCategoryData {
+  [key: string]: number;
+}
+
 /**
  * Cashflow Template Service
- * Maps GL data into user-provided template Excel file
- * Preserves template structure, formulas, and formatting
+ * Maps parsed GL data into user-provided template
+ * - Template = Design/Format only
+ * - GL data = Actual calculation from uploaded file
  */
 @Injectable()
 export class CashflowTemplateService {
   private templateDir = path.join(process.cwd(), 'templates');
 
   /**
-   * Load template from user uploads
-   * User should have uploaded: "2026_TWD_s_Cashflows_Report.xlsx"
+   * Load template from templates/ directory
    */
   async loadTemplate(): Promise<ExcelJS.Workbook> {
-    // Find template files in templates/ directory
     if (!fs.existsSync(this.templateDir)) {
       throw new Error('Templates directory not found');
     }
@@ -28,7 +31,7 @@ export class CashflowTemplateService {
 
     if (templates.length === 0) {
       throw new Error(
-        'No Cashflow template found. Please upload template file first.',
+        'No Cashflow template found. Please ensure template file exists in templates/ directory.',
       );
     }
 
@@ -41,11 +44,66 @@ export class CashflowTemplateService {
   }
 
   /**
-   * Map GL account data to template
-   * Template structure expected:
-   * - Column A: Category names (Thu, Chi, Lãi/Lỗ, etc.)
-   * - Columns B-onwards: Monthly data
-   * - Last row: Totals with formulas
+   * Calculate GL data totals by category
+   * Input: Map of GL accounts with debit/credit amounts
+   * Output: Totals per category (Thu, Chi, Tài chính, etc.)
+   */
+  calculateCategoryTotals(
+    glData: Map<string, { debit: number; credit: number }>,
+  ): GLCategoryData {
+    const totals: GLCategoryData = {
+      'Thu dự án': 0, // 515.x - Revenue (Debit)
+      'Chi dự án': 0, // 635.x - Expense (Credit)
+      'Tài chính thu nhập': 0, // 81x - Financial income (Debit)
+      'Tài chính chi': 0, // 82x - Financial expense (Credit)
+      'Tiền mặt': 0, // 1111 - Cash (Debit - Credit)
+    };
+
+    console.log('🧮 Calculating GL totals by category...');
+
+    for (const [account, amounts] of glData.entries()) {
+      console.log(
+        `   Account ${account}: Debit=${amounts.debit}, Credit=${amounts.credit}`,
+      );
+
+      if (account.startsWith('515')) {
+        // Revenue accounts - use Debit
+        totals['Thu dự án'] += amounts.debit;
+        console.log(`     → Added to "Thu dự án": +${amounts.debit}`);
+      } else if (account.startsWith('635')) {
+        // Expense accounts - use Credit
+        totals['Chi dự án'] += amounts.credit;
+        console.log(`     → Added to "Chi dự án": +${amounts.credit}`);
+      } else if (account.startsWith('81')) {
+        // Financial income - use Debit
+        totals['Tài chính thu nhập'] += amounts.debit;
+        console.log(`     → Added to "Tài chính thu nhập": +${amounts.debit}`);
+      } else if (account.startsWith('82')) {
+        // Financial expense - use Credit
+        totals['Tài chính chi'] += amounts.credit;
+        console.log(`     → Added to "Tài chính chi": +${amounts.credit}`);
+      } else if (account === '1111') {
+        // Cash - Net (Debit - Credit)
+        totals['Tiền mặt'] += amounts.debit - amounts.credit;
+        console.log(
+          `     → Added to "Tiền mặt": +${amounts.debit - amounts.credit}`,
+        );
+      }
+    }
+
+    console.log('\n✅ Category Totals:');
+    Object.entries(totals).forEach(([category, value]) => {
+      console.log(
+        `   ${category}: ${value.toLocaleString('vi-VN')} VND`,
+      );
+    });
+
+    return totals;
+  }
+
+  /**
+   * Map GL calculated data into template
+   * Finds category rows and fills with GL totals
    */
   async mapGLDataToTemplate(
     template: ExcelJS.Workbook,
@@ -58,77 +116,57 @@ export class CashflowTemplateService {
       throw new Error('No worksheet in template');
     }
 
-    console.log('🧮 Mapping GL data to template...');
+    // Calculate totals
+    const categoryTotals = this.calculateCategoryTotals(glData);
 
-    // Map GL accounts to template categories
-    const glMapping = {
-      'Thu dự án': ['515'], // Revenue: 515.x
-      'Chi dự án': ['635'], // Expense: 635.x
-      'Tài chính thu nhập': ['81'], // Financial income: 81x
-      'Tài chính chi': ['82'], // Financial expense: 82x
-      'Tiền mặt': ['1111'], // Cash: 1111
-    };
+    console.log('\n📍 Mapping GL data to template...');
 
-    // Calculate totals for each category
-    const categoryTotals: Map<string, number> = new Map();
+    // Column mapping: Assume column B is Jan (month 1), C is Feb (month 2), etc.
+    // For month=3 (March), column should be D (column index 4)
+    const dataColumnIndex = month + 1; // Column A=1, B=2, C=3, D=4, etc.
 
-    for (const [category, prefixes] of Object.entries(glMapping)) {
-      let total = 0;
+    console.log(
+      `   Target column: Column ${String.fromCharCode(64 + dataColumnIndex)} (Month ${month})`,
+    );
 
-      for (const prefix of prefixes) {
-        for (const [account, amounts] of glData.entries()) {
-          if (account.startsWith(prefix)) {
-            // Revenue/Income: Debit; Expense: Credit
-            const value =
-              category.includes('Chi') || category.includes('chi')
-                ? amounts.credit
-                : amounts.debit;
-            total += value;
-          }
-        }
-      }
-
-      categoryTotals.set(category, total);
-      console.log(`  ${category}: ${total.toLocaleString('vi-VN')}`);
-    }
-
-    // Find and fill category rows in template
     let updateCount = 0;
+
+    // Search for category rows and fill with GL data
     worksheet.eachRow((row, rowNumber) => {
       const firstCell = row.getCell(1).value;
       if (!firstCell) return;
 
-      const categoryName = String(firstCell).trim();
+      const cellText = String(firstCell).trim();
 
-      if (categoryTotals.has(categoryName)) {
-        // Find the "current month" column (typically column based on month)
-        // For now, assume column B is Jan, C is Feb, etc.
-        const monthColumn = month + 1; // Column A=0, B=1 (Jan), C=2 (Feb), etc.
-        const cell = row.getCell(monthColumn);
-
-        if (cell) {
-          const value = categoryTotals.get(categoryName) || 0;
-          cell.value = value;
-          cell.numFmt = '#,##0';
-          updateCount++;
-          console.log(
-            `  Updated ${categoryName} @ R${rowNumber}C${monthColumn} = ${value.toLocaleString('vi-VN')}`,
-          );
+      // Match category names
+      for (const [category, value] of Object.entries(categoryTotals)) {
+        if (cellText.includes(category)) {
+          const targetCell = row.getCell(dataColumnIndex);
+          if (targetCell) {
+            targetCell.value = value;
+            targetCell.numFmt = '#,##0'; // Vietnamese number format
+            updateCount++;
+            console.log(
+              `   ✓ R${rowNumber}C${dataColumnIndex}: "${cellText}" = ${value.toLocaleString('vi-VN')}`,
+            );
+          }
+          break;
         }
       }
     });
 
-    console.log(`✅ Mapped ${updateCount} cells`);
+    console.log(`\n✅ Updated ${updateCount} cells in template`);
     return template;
   }
 
   /**
-   * Recalculate all formulas in template
+   * Formulas preserved automatically by ExcelJS
+   * When Excel opens file, formulas will recalculate
    */
   async recalculateFormulas(workbook: ExcelJS.Workbook): Promise<void> {
-    // ExcelJS doesn't auto-calc formulas, but exports them
-    // Formulas will be recalculated when file is opened in Excel
-    console.log('✅ Formulas preserved (will recalc in Excel)');
+    console.log(
+      '✅ Formulas preserved (will auto-recalculate when opened in Excel)',
+    );
   }
 
   /**
@@ -144,7 +182,6 @@ export class CashflowTemplateService {
       filename || `cashflow_${Date.now()}.xlsx`,
     );
 
-    // Ensure output directory exists
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
