@@ -175,6 +175,7 @@ export class CashflowTemplateService {
   /**
    * Fill GL data into copied template
    * Month = 3 (March) → Columns I & J (9 & 10)
+   * Column I = Actual value
    */
   async fillGLDataIntoTemplate(
     workbook: ExcelJS.Workbook,
@@ -190,40 +191,43 @@ export class CashflowTemplateService {
 
     // Month column mapping (pairs for Actual/Plan)
     // E=5 for month 1, G=7 for month 2, I=9 for month 3, etc.
-    const monthColIndex = 3 + month * 2;
+    const monthColActual = 3 + month * 2; // Actual column (E, G, I, K, M...)
     console.log(
-      `   Target column: ${String.fromCharCode(64 + monthColIndex)} (index ${monthColIndex})`,
+      `   Target column (Actual): ${String.fromCharCode(64 + monthColActual)} (index ${monthColActual})`,
     );
 
     let updatedCount = 0;
 
     // Map each category to its template row
     categoryTotals.forEach((value, category) => {
+      console.log(`\n   🔍 Looking for category: "${category}"`);
       // Find row with this category name in Column B
       let found = false;
       worksheet.eachRow((row, rowNumber) => {
         const cellB = row.getCell(2).value; // Column B
-        if (cellB && String(cellB).includes(category)) {
-          // Fill column with GL value
-          const cell = row.getCell(monthColIndex);
-          cell.value = value;
-          cell.numFmt = '#,##0';
-          updatedCount++;
-          console.log(
-            `   ✓ R${rowNumber}C${monthColIndex}: "${category}" = ${value.toLocaleString(
-              'vi-VN',
-            )}`,
-          );
-          found = true;
+        if (cellB) {
+          const cellBStr = String(cellB).trim();
+          // Match exact category name
+          if (cellBStr === category) {
+            // Fill column with GL value
+            const cell = row.getCell(monthColActual);
+            console.log(`   ✓ Found at R${rowNumber}C${monthColActual}`);
+            console.log(`     Old value: ${cell.value}`);
+            cell.value = value;
+            cell.numFmt = '#,##0';
+            console.log(`     New value: ${value.toLocaleString('vi-VN')}`);
+            updatedCount++;
+            found = true;
+          }
         }
       });
 
       if (!found) {
-        console.log(`   ⚠️  Category "${category}" not found in template`);
+        console.log(`   ⚠️  NOT FOUND: "${category}"`);
       }
     });
 
-    console.log(`✅ Updated ${updatedCount} cells with GL data`);
+    console.log(`\n✅ Updated ${updatedCount} cells with GL data`);
     return workbook;
   }
 
