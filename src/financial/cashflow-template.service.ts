@@ -240,8 +240,9 @@ export class CashflowTemplateService {
     glByMonth.forEach((records, month) => {
       console.log(`\n   📅 Month ${month}:`);
 
-      // Month column (Actual only): F=6, H=8, J=10, L=12, N=14, P=16, R=18, T=20, V=22, X=24, Z=26, \=28
-      const monthColIndex = 4 + month * 2;
+      // Month column (Plan columns): G=7, I=9, K=11, M=13, O=15, Q=17, S=19, U=21, W=23, Y=25, [=27, ]=29
+      // Formula: colIndex = 5 + month * 2
+      const monthColIndex = 5 + month * 2;
       const colLetter = String.fromCharCode(64 + monthColIndex);
 
       // For each transaction in this month (detailed row-by-row)
