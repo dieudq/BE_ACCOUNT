@@ -197,10 +197,15 @@ export class CashflowTemplateService {
   }
 
   /**
-   * Fill GL data into template
-   * IMPORTANT: Only replace cells that = 0 (placeholders)
-   * Don't clear, don't create new workbook
-   * Just fill 0 → GL value in correct month column for matching categories
+   * Fill GL data into template SUB-ROWS (not category rows)
+   * Template structure: Category rows have formulas that SUM sub-rows
+   * So fill sub-rows → formulas calculate automatically
+   * 
+   * Fill by month:
+   * - For each GL transaction
+   * - Find account → map to sub-row
+   * - Find month → map to column (F=Jan, H=Feb, etc.)
+   * - Fill cell[row][col] = amount
    */
   async fillGLDataWithCategoryMapping(
     workbook: ExcelJS.Workbook,
@@ -213,84 +218,68 @@ export class CashflowTemplateService {
       throw new Error('Worksheet not found');
     }
 
-    console.log('\n📍 Filling GL data (replace 0 only)...');
+    console.log('\n📍 Filling GL data into sub-rows (by month)...');
 
+    // GL account → Sub-row mapping
+    const glToSubRow = {
+      '515.3': 10, '515.5': 11, '515.2': 12, '711.2': 12, '711.1': 13, '515.1': 14, '635': 14,
+      '334.1': 18, '334.2': 19,
+      '6422.2': 24, '6422.3': 25, '6422.4': 26,
+      '154.1': 29, '154.2': 30,
+      '6421.2': 32,
+      '6422.6': 35,
+      '6421.3': 38, '6421.4': 39, '6421.5': 40, '6421.6': 41, '6421.7': 42,
+      '6421.8': 45, '6421.9': 46,
+      '821': 54,
+      '334-10': 58, '334-11': 59, '334-12': 60, '6421-13': 61, '6421-14': 62,
+    };
+
+    let totalFilled = 0;
+
+    // For each month in GL data
     glByMonth.forEach((records, month) => {
       console.log(`\n   📅 Month ${month}:`);
 
-      // Group by counter-account
-      const accountTotals = new Map<string, { debit: number; credit: number }>();
-      records.forEach((record: any) => {
-        const account = record.counterAccount as string;
-        if (!accountTotals.has(account)) {
-          accountTotals.set(account, { debit: 0, credit: 0 });
-        }
-        const totals = accountTotals.get(account);
-        if (totals) {
-          totals.debit += (record.debitAmount as number) || 0;
-          totals.credit += (record.creditAmount as number) || 0;
-        }
-      });
-
-      // Map to categories
-      const categoryTotals = new Map<string, number>();
-      accountTotals.forEach((amounts, account) => {
-        const category = chartOfAccountsService.mapAccountToCategory(account);
-        const net = amounts.debit - amounts.credit;
-
-        console.log(
-          `     ${account} → ${category}: Debit=${amounts.debit}, Credit=${amounts.credit}, Net=${net}`,
-        );
-
-        if (!categoryTotals.has(category)) {
-          categoryTotals.set(category, 0);
-        }
-        categoryTotals.set(category, (categoryTotals.get(category) || 0) + net);
-      });
-
-      // Month column (Actual only): F, H, J, L, N, P, R, T, V, X, Z, \
+      // Month column (Actual only): F=6, H=8, J=10, L=12, N=14, P=16, R=18, T=20, V=22, X=24, Z=26, \=28
       const monthColIndex = 4 + month * 2;
       const colLetter = String.fromCharCode(64 + monthColIndex);
 
-      console.log(`   Column ${colLetter} (index ${monthColIndex})`);
+      // For each transaction in this month
+      records.forEach((record: any) => {
+        const accountCode = (record.counterAccount as string).trim();
+        const debit = (record.debitAmount as number) || 0;
+        const credit = (record.creditAmount as number) || 0;
+        const amount = debit - credit; // Net
 
-      let updateCount = 0;
-      categoryTotals.forEach((value, category) => {
-        // Find row in template by category name
-        let found = false;
-        worksheet.eachRow((row, rowNum) => {
-          const cellB = row.getCell(2).value;
-          if (cellB && String(cellB).trim() === category.trim()) {
-            const cell = row.getCell(monthColIndex);
-            
-            // ONLY fill if cell = 0 (placeholder)
-            if (cell.value === 0) {
-              console.log(
-                `     ✓ R${rowNum}C${monthColIndex}: "${category}" = ${value.toLocaleString(
-                  'vi-VN',
-                )}`,
-              );
-              cell.value = value;
-              cell.numFmt = '#,##0';
-              updateCount++;
-            } else {
-              console.log(
-                `     ⊘ R${rowNum}C${monthColIndex}: "${category}" already has ${cell.value}, skipped`,
-              );
-            }
-            found = true;
-          }
-        });
-
-        if (!found) {
-          console.log(`     ⚠️  Category "${category}" not found in template`);
+        // Find sub-row for this account
+        const subRow = glToSubRow[accountCode];
+        if (!subRow) {
+          console.log(
+            `     ⚠️  Account ${accountCode}: No sub-row mapping, skipped`,
+          );
+          return;
         }
-      });
 
-      console.log(`     Updated ${updateCount} cells`);
+        // Get cell in template
+        const cell = worksheet.getRow(subRow).getCell(monthColIndex);
+        const currentVal = cell.value || 0;
+
+        // ACCUMULATE: Add to existing value (in case multiple transactions for same account/month)
+        const newVal = (typeof currentVal === 'number' ? currentVal : 0) + amount;
+        cell.value = newVal;
+        cell.numFmt = '#,##0';
+
+        console.log(
+          `     ✓ R${subRow}${colLetter}: ${accountCode} = ${amount.toLocaleString(
+            'vi-VN',
+          )} (total: ${newVal.toLocaleString('vi-VN')})`,
+        );
+
+        totalFilled++;
+      });
     });
 
-    console.log('\n✅ GL data filled (0s replaced only)');
+    console.log(`\n✅ Filled ${totalFilled} transactions into sub-rows`);
     return workbook;
   }
 
