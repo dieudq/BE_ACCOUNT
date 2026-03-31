@@ -244,18 +244,19 @@ export class CashflowTemplateService {
       const monthColIndex = 4 + month * 2;
       const colLetter = String.fromCharCode(64 + monthColIndex);
 
-      // For each transaction in this month
-      records.forEach((record: any) => {
+      // For each transaction in this month (detailed row-by-row)
+      records.forEach((record: any, idx: number) => {
         const accountCode = (record.counterAccount as string).trim();
         const debit = (record.debitAmount as number) || 0;
         const credit = (record.creditAmount as number) || 0;
         const amount = debit - credit; // Net
+        const desc = record.description || '';
 
         // Find sub-row for this account
         const subRow = glToSubRow[accountCode];
         if (!subRow) {
           console.log(
-            `     ⚠️  Account ${accountCode}: No sub-row mapping, skipped`,
+            `     ⚠️  Row ${idx + 1}: ${accountCode} "${desc}" - No sub-row mapping`,
           );
           return;
         }
@@ -270,16 +271,16 @@ export class CashflowTemplateService {
         cell.numFmt = '#,##0';
 
         console.log(
-          `     ✓ R${subRow}${colLetter}: ${accountCode} = ${amount.toLocaleString(
+          `     ✓ Row ${idx + 1}: ${accountCode} → R${subRow}${colLetter} | "${desc}" | +${amount.toLocaleString(
             'vi-VN',
-          )} (total: ${newVal.toLocaleString('vi-VN')})`,
+          )} = ${newVal.toLocaleString('vi-VN')}`,
         );
 
         totalFilled++;
       });
     });
 
-    console.log(`\n✅ Filled ${totalFilled} transactions into sub-rows`);
+    console.log(`\n✅ Processed ${totalFilled} transactions`);
     return workbook;
   }
 
