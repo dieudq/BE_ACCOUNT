@@ -1,232 +1,237 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ERPAdapter } from '../adapters/erp.adapter';
-import { JiraAdapter } from '../adapters/jira.adapter';
+import { ERPClientService, ERPMonthlyEmployee } from '../common/services/erp-client.service';
 
 @Injectable()
 export class DataSyncService {
+  private readonly logger = new Logger(DataSyncService.name);
+
   constructor(
-    private prisma: PrismaService,
-    private erp: ERPAdapter,
-    private jira: JiraAdapter,
+    private readonly prisma: PrismaService,
+    private readonly erpClient: ERPClientService,
   ) {}
 
   /**
-   * Sync worklogs from ERP → Database
-   * Falls back to Jira (local DB) if ERP unavailable
+   * Sync monthly workload report from ERP → local DB.
+   * Stores per-project rows in ProjectParticipation (multi-project per employee).
+   * Falls back to empty result if ERP is unavailable.
    */
-  async syncMonthlyWorklogs(year: number, month: number): Promise<{
-    source: 'erp' | 'local';
-    synced: number;
-    message: string;
-  }> {
+  async syncMonthlyWorkloadReport(
+    year: number,
+    month: number,
+    deptCode?: string,
+  ): Promise<{ synced: number; atRisk: number; message: string }> {
+    const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+
     try {
-      // Try ERP first
-      const erpHealth = await this.erp.healthCheck();
+      const healthy = await this.erpClient.healthCheck();
+      if (!healthy) {
+        this.logger.warn(`⚠️ ERP unavailable — skipping workload sync for ${monthStr}`);
+        return { synced: 0, atRisk: 0, message: '⚠️ ERP unavailable' };
+      }
 
-      if (erpHealth) {
-        console.log('✅ ERP online, fetching worklogs...');
-        const erpWorklogs = await this.erp.getEmployeeWorklogs(year, month);
+      const report = await this.erpClient.getMonthlyWorkloadReport(monthStr, deptCode);
 
-        if (erpWorklogs.length > 0) {
-          // Save to local DB
-          for (const log of erpWorklogs) {
-            // Find or create user
-            let user = await this.prisma.user.findFirst({
-              where: { email: log.employeeName + '@erp' },
-            });
+      let synced = 0;
 
-            if (!user) {
-              user = await this.prisma.user.create({
-                data: {
-                  name: log.employeeName,
-                  email: log.employeeName + '@erp',
-                  department: 'ERP Sync',
-                  role: 'employee',
-                },
-              });
-            }
-
-            // Find or create project
-            let project = await this.prisma.project.findFirst({
-              where: { code: log.projectCode },
-            });
-
-            if (!project) {
-              project = await this.prisma.project.create({
-                data: {
-                  code: log.projectCode,
-                  name: log.projectName,
-                  status: 'active',
-                },
-              });
-            }
-
-            // Upsert employee hours
-            await this.prisma.employeeHours.upsert({
-              where: {
-                userId_year_month: {
-                  userId: user.id,
-                  year,
-                  month,
-                },
-              },
-              create: {
-                userId: user.id,
-                projectId: project.id,
-                year,
-                month,
-                loggedHours: log.loggedHours.toString(),
-                stdHours: '160.00',
-                selfLearningHours: Math.max(0, 160 - log.loggedHours).toString(),
-                syncedAt: new Date(),
-              },
-              update: {
-                loggedHours: log.loggedHours.toString(),
-                selfLearningHours: Math.max(0, 160 - log.loggedHours).toString(),
-                syncedAt: new Date(),
-              },
-            });
-          }
-
-          return {
-            source: 'erp',
-            synced: erpWorklogs.length,
-            message: `✅ Synced ${erpWorklogs.length} worklogs from ERP`,
-          };
+      for (const emp of report.employees) {
+        try {
+          await this.upsertEmployee(emp);
+          await this.upsertEmployeeHours(emp, year, month);
+          await this.upsertProjectParticipations(emp, year, month);
+          synced++;
+        } catch (err: any) {
+          this.logger.error(
+            `❌ Sync error for employee ${emp.employeeId} (${emp.fullName}): ${err.message}`,
+          );
         }
       }
 
-      // Fallback to local Jira/DB
-      console.log('⚠️ ERP unavailable, using local database...');
-      const localWorklogs = await this.jira.getWorklogsByMonth(year, month);
+      this.logger.log(
+        `✅ Workload sync complete: ${synced}/${report.employees.length} employees, atRisk=${report.summary.atRiskCount}`,
+      );
 
       return {
-        source: 'local',
-        synced: localWorklogs.length,
-        message: `⚠️ Using local database (${localWorklogs.length} worklogs)`,
+        synced,
+        atRisk: report.summary.atRiskCount,
+        message: `✅ Synced ${synced} employees from ERP (${monthStr})`,
       };
-    } catch (error) {
-      console.error('❌ Sync error:', error.message);
-      return {
-        source: 'local',
-        synced: 0,
-        message: `❌ Sync failed: ${error.message}`,
-      };
+    } catch (err: any) {
+      this.logger.error(`❌ Workload sync failed: ${err.message}`);
+      return { synced: 0, atRisk: 0, message: `❌ Sync failed: ${err.message}` };
     }
   }
 
   /**
-   * Sync employees from ERP → Database
+   * Sync employees from ERP
    */
-  async syncEmployees(): Promise<{
-    synced: number;
-    message: string;
-  }> {
+  async syncEmployees(): Promise<{ synced: number; message: string }> {
     try {
-      const erpHealth = await this.erp.healthCheck();
-
-      if (!erpHealth) {
-        return {
-          synced: 0,
-          message: '⚠️ ERP unavailable',
-        };
+      const healthy = await this.erpClient.healthCheck();
+      if (!healthy) {
+        return { synced: 0, message: '⚠️ ERP unavailable' };
       }
 
-      const erpEmployees = await this.erp.getEmployees();
+      // Re-use workload report for current month to get employee list
+      const now = new Date();
+      const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const report = await this.erpClient.getMonthlyWorkloadReport(monthStr);
 
-      if (erpEmployees.length === 0) {
-        return {
-          synced: 0,
-          message: 'No employees from ERP',
-        };
+      let synced = 0;
+      for (const emp of report.employees) {
+        await this.upsertEmployee(emp);
+        synced++;
       }
 
-      let syncedCount = 0;
-
-      for (const emp of erpEmployees) {
-        await this.prisma.user.upsert({
-          where: { email: emp.email },
-          create: {
-            name: emp.name,
-            email: emp.email,
-            department: emp.department,
-            role: 'employee',
-          },
-          update: {
-            name: emp.name,
-            department: emp.department,
-          },
-        });
-        syncedCount++;
-      }
-
-      return {
-        synced: syncedCount,
-        message: `✅ Synced ${syncedCount} employees from ERP`,
-      };
-    } catch (error) {
-      console.error('❌ Employee sync error:', error.message);
-      return {
-        synced: 0,
-        message: `❌ Employee sync failed: ${error.message}`,
-      };
+      return { synced, message: `✅ Synced ${synced} employees from ERP` };
+    } catch (err: any) {
+      return { synced: 0, message: `❌ Employee sync failed: ${err.message}` };
     }
   }
 
-  /**
-   * Sync projects from ERP → Database
-   */
-  async syncProjects(): Promise<{
-    synced: number;
-    message: string;
-  }> {
-    try {
-      const erpHealth = await this.erp.healthCheck();
+  // ─── Private helpers ───────────────────────────────────────────────────────
 
-      if (!erpHealth) {
-        return {
-          synced: 0,
-          message: '⚠️ ERP unavailable',
-        };
-      }
+  private async upsertEmployee(emp: ERPMonthlyEmployee): Promise<void> {
+    // Use employeeId as stable external identifier mapped to local User
+    const existing = await this.prisma.user.findFirst({
+      where: { email: `${emp.employeeId}@erp` },
+    });
 
-      const erpProjects = await this.erp.getProjects();
+    if (!existing) {
+      await this.prisma.user.create({
+        data: {
+          name: emp.fullName ?? emp.employeeId,
+          email: `${emp.employeeId}@erp`,
+          department: emp.department ?? undefined,
+          role: 'employee',
+        },
+      });
+    } else {
+      await this.prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          name: emp.fullName ?? existing.name,
+          department: emp.department ?? existing.department,
+        },
+      });
+    }
+  }
 
-      if (erpProjects.length === 0) {
-        return {
-          synced: 0,
-          message: 'No projects from ERP',
-        };
-      }
+  private async getLocalUserId(employeeId: string): Promise<string | null> {
+    const user = await this.prisma.user.findFirst({
+      where: { email: `${employeeId}@erp` },
+      select: { id: true },
+    });
+    return user?.id ?? null;
+  }
 
-      let syncedCount = 0;
+  private async upsertEmployeeHours(
+    emp: ERPMonthlyEmployee,
+    year: number,
+    month: number,
+  ): Promise<void> {
+    const userId = await this.getLocalUserId(emp.employeeId);
+    if (!userId) return;
 
-      for (const proj of erpProjects) {
-        await this.prisma.project.upsert({
-          where: { code: proj.code },
-          create: {
-            name: proj.name,
-            code: proj.code,
-            status: 'active',
-          },
-          update: {
-            name: proj.name,
+    await this.prisma.employeeHours.upsert({
+      where: { userId_year_month: { userId, year, month } },
+      create: {
+        userId,
+        year,
+        month,
+        loggedHours: emp.actualLoggedHours.toString(),
+        stdHours: emp.effectiveStandardHours.toString(),
+        selfLearningHours: emp.selfLearningHours.toString(),
+        syncedAt: new Date(),
+      },
+      update: {
+        loggedHours: emp.actualLoggedHours.toString(),
+        stdHours: emp.effectiveStandardHours.toString(),
+        selfLearningHours: emp.selfLearningHours.toString(),
+        syncedAt: new Date(),
+      },
+    });
+
+    // Store alert if at risk
+    if (emp.isAtRisk) {
+      await this.prisma.alert.upsert({
+        where: {
+          // No unique constraint on alert — use findFirst + create pattern
+          id: `placeholder`,
+        },
+        create: {
+          alertType: 'SELF_LEARNING_EXCEEDED',
+          userId,
+          message: `⚠️ Self-learning ${emp.selfLearningHours.toFixed(1)}h > threshold (${year}/${month})`,
+        },
+        update: {},
+      }).catch(async () => {
+        // Upsert not ideal here — just create if not already alerted this month
+        const existing = await this.prisma.alert.findFirst({
+          where: {
+            userId,
+            alertType: 'SELF_LEARNING_EXCEEDED',
+            createdAt: {
+              gte: new Date(year, month - 1, 1),
+              lte: new Date(year, month, 0),
+            },
           },
         });
-        syncedCount++;
-      }
+        if (!existing) {
+          await this.prisma.alert.create({
+            data: {
+              alertType: 'SELF_LEARNING_EXCEEDED',
+              userId,
+              message: `⚠️ Self-learning ${emp.selfLearningHours.toFixed(1)}h > threshold (${year}/${month})`,
+            },
+          });
+        }
+      });
+    }
+  }
 
-      return {
-        synced: syncedCount,
-        message: `✅ Synced ${syncedCount} projects from ERP`,
-      };
-    } catch (error) {
-      console.error('❌ Project sync error:', error.message);
-      return {
-        synced: 0,
-        message: `❌ Project sync failed: ${error.message}`,
-      };
+  private async upsertProjectParticipations(
+    emp: ERPMonthlyEmployee,
+    year: number,
+    month: number,
+  ): Promise<void> {
+    const userId = await this.getLocalUserId(emp.employeeId);
+    if (!userId) return;
+
+    for (const proj of emp.projects) {
+      // Ensure project exists locally
+      const localProject = await this.prisma.project.upsert({
+        where: { code: proj.projectKey },
+        create: {
+          code: proj.projectKey,
+          name: proj.projectName,
+          status: 'active',
+        },
+        update: { name: proj.projectName },
+      });
+
+      await this.prisma.projectParticipation.upsert({
+        where: {
+          userId_projectId_year_month: {
+            userId,
+            projectId: localProject.id,
+            year,
+            month,
+          },
+        },
+        create: {
+          userId,
+          projectId: localProject.id,
+          year,
+          month,
+          loggedHours: proj.hours.toString(),
+          participationPercent: proj.percent.toString(),
+        },
+        update: {
+          loggedHours: proj.hours.toString(),
+          participationPercent: proj.percent.toString(),
+        },
+      });
     }
   }
 }

@@ -141,6 +141,26 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
+      if (cmd === '/warnings') {
+        await this.commandService.handleWarnings(this.bot, chatId);
+        return;
+      }
+
+      if (cmd === '/workload') {
+        await this.commandService.handleWorkload(this.bot, chatId, args);
+        return;
+      }
+
+      if (cmd === '/analyze') {
+        await this.commandService.handleAnalyze(this.bot, chatId, args);
+        return;
+      }
+
+      if (cmd === '/insights') {
+        await this.commandService.handleInsights(this.bot, chatId, args);
+        return;
+      }
+
       // === LEGACY COMMANDS (Phase 3-4 compatibility) ===
       if (message.startsWith('APPROVE ')) {
         const requestId = message.substring(8).trim();

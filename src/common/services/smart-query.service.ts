@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { accountingBotAPI } from './agent-api-client';
+import { ParticipationReportService } from '../../reports/participation.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -13,7 +14,10 @@ import * as path from 'path';
  */
 @Injectable()
 export class SmartQueryService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private participation: ParticipationReportService,
+  ) {}
 
   /**
    * Main entry - xử lý BẤT CỨ câu hỏi
@@ -22,6 +26,17 @@ export class SmartQueryService {
     const lowerQ = question.toLowerCase().trim();
 
     // === INTENT DETECTION ===
+
+    // 0. WORKLOAD / SELF-LEARNING queries (check first — high priority)
+    if (
+      this.isAbout(lowerQ, [
+        'workload', 'self-learning', 'self learning', 'tự học',
+        'tham gia dự án', 'báo cáo tháng', 'giờ log', 'cảnh báo workload',
+        'ngưỡng', 'vượt ngưỡng', 'sắp vượt', 'at-risk', 'at risk',
+      ])
+    ) {
+      return await this.handleWorkloadQuery(question);
+    }
 
     // 1. PENDING/WAITING - "chờ", "chưa", "đang chờ"
     if (this.isAbout(lowerQ, ['chờ', 'chưa', 'pending', 'waiting', 'đang chờ'])) {
@@ -380,6 +395,67 @@ export class SmartQueryService {
       }
     } catch (error) {
       return `❌ Lỗi: ${(error as Error).message}`;
+    }
+  }
+
+  /**
+   * Handle workload / participation queries
+   */
+  private async handleWorkloadQuery(question: string): Promise<string> {
+    try {
+      const lowerQ = question.toLowerCase();
+      const now = new Date();
+
+      // Extract month if mentioned: "tháng 3", "tháng 03", "3/2026"
+      const monthMatch = lowerQ.match(/tháng\s*(\d{1,2})/);
+      const yearMatch = lowerQ.match(/năm\s*(\d{4})|(\d{4})/);
+      const month = monthMatch ? parseInt(monthMatch[1], 10) : now.getMonth() + 1;
+      const year = yearMatch ? parseInt(yearMatch[1] || yearMatch[2], 10) : now.getFullYear();
+
+      // "Ai sắp vượt / at-risk"
+      if (this.isAbout(lowerQ, ['sắp', 'at-risk', 'at risk', 'ngưỡng', 'vượt'])) {
+        const risks = await this.participation.getAtRiskEmployees(year, month, 30);
+        if (risks.length === 0) {
+          return `✅ Tháng ${month}/${year}: Không có nhân sự nào có nguy cơ vượt ngưỡng 30h self-learning.`;
+        }
+        let msg = `⚠️ <b>Tháng ${month}/${year} — Nhân sự có nguy cơ vượt ngưỡng 30h:</b>\n\n`;
+        for (const r of risks) {
+          const exceeded = r.selfLearningHours > 30;
+          msg += `${exceeded ? '🔴' : '🟡'} <b>${r.employeeName}</b>: ${r.selfLearningHours.toFixed(1)}h self-learning`;
+          if (exceeded) msg += ' <b>(Đã vượt!)</b>';
+          msg += '\n';
+        }
+        return msg;
+      }
+
+      // Default: full report summary
+      const report = await this.participation.generateMonthlyReport(year, month);
+      if (report.rows.length === 0) {
+        return `❌ Tháng ${month}/${year}: Chưa có dữ liệu. Hãy sync dữ liệu trước bằng lệnh /sync_workload.`;
+      }
+
+      let msg = `📊 <b>Báo cáo workload tháng ${month}/${year}</b>\n`;
+      msg += `👥 Tổng nhân sự: ${report.rows.length}\n`;
+      msg += `⚠️ Vượt ngưỡng 30h: ${report.alerts.length} người\n\n`;
+
+      if (report.alerts.length > 0) {
+        msg += `🔴 <b>Nhân sự vượt ngưỡng:</b>\n`;
+        for (const a of report.alerts) {
+          msg += `• ${a.employeeName}: ${a.hours.toFixed(1)}h self-learning\n`;
+        }
+        msg += '\n';
+      }
+
+      // Top 3 lowest actual logged
+      const sorted = [...report.rows].sort((a, b) => a.projectHours - b.projectHours);
+      msg += `📉 <b>Log ít nhất:</b>\n`;
+      for (const r of sorted.slice(0, 3)) {
+        msg += `• ${r.employeeName}: ${r.projectHours.toFixed(1)}h log / ${r.standardHours.toFixed(0)}h chuẩn (${r.selfLearningPercent.toFixed(1)}% self-learning)\n`;
+      }
+
+      return msg;
+    } catch (error) {
+      return `❌ Lỗi workload query: ${(error as Error).message}`;
     }
   }
 

@@ -1,32 +1,40 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { WorkloadAnalysisService } from '../workload/workload-analysis.service';
+import { ParticipationReportService } from '../reports/participation.service';
 import TelegramBot from 'node-telegram-bot-api';
 
 @Injectable()
 export class BotCommandService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private workloadAnalysis: WorkloadAnalysisService,
+    private participation: ParticipationReportService,
+  ) {}
 
   /**
    * Handle /start command
    */
   async handleStart(bot: TelegramBot, chatId: string | number): Promise<void> {
     const welcome = `
-Welcome to Accounting Bot! 🤖
+🤖 <b>Accounting + Workload AI Bot</b>
 
-Available Commands:
-/start - Show this welcome message
-/help - Display all available commands
-/report - View monthly participation report
-/approvals - List pending approvals
-/vouchers - List all vouchers
-/balance - View GL account balance
-/export - Export reports to Excel
-/status - Check system status
+── Kế toán ──
+/approvals - Phê duyệt phiếu chi
+/vouchers - Danh sách phiếu chi
+/balance &lt;code&gt; - Số dư tài khoản GL
+/status - Trạng thái hệ thống
 
-Type any command to get started!
+── Workload AI 🔥 ──
+/warnings - Cảnh báo tháng này
+/workload [year] [month] - Báo cáo
+/analyze &lt;name&gt; - AI phân tích nhân sự
+/insights [year] [month] - AI insights
+
+/help - Xem đầy đủ hướng dẫn
     `.trim();
 
-    await bot.sendMessage(chatId, welcome);
+    await bot.sendMessage(chatId, welcome, { parse_mode: 'HTML' });
   }
 
   /**
@@ -36,30 +44,28 @@ Type any command to get started!
     const help = `
 📚 AVAILABLE COMMANDS
 
+── Kế toán ──
 /start - Welcome & intro
 /report - Participation report (month/year required)
   Usage: /report 2026 3
-
 /approvals - Show pending approvals
-  Displays: Count, list, status
-
 /vouchers - List all vouchers
-  Displays: ID, amount, status, last updated
-
-/balance - GL Account Balance
-  Usage: /balance 1111
-  Shows: Account detail, debit, credit, balance
-
+/balance &lt;code&gt; - GL Account Balance
 /export - Export reports
-  Options: participation, cashflow, financial
-
 /status - System health check
-  Shows: DB, services, uptime
+
+── Workload AI ──
+/warnings - Cảnh báo self-learning tháng này
+/workload [year] [month] - Báo cáo workload
+  Usage: /workload 2026 3
+/analyze &lt;name&gt; [year] [month] - AI phân tích nhân sự
+  Usage: /analyze Nguyen Van A
+/insights [year] [month] - AI insights tổng quan team
 
 /help - Show this message
     `.trim();
 
-    await bot.sendMessage(chatId, help);
+    await bot.sendMessage(chatId, help, { parse_mode: 'HTML' });
   }
 
   /**
@@ -255,6 +261,177 @@ Last check: ${new Date().toLocaleString('en-US')}
       await bot.sendMessage(chatId, message);
     } catch (err) {
       await bot.sendMessage(chatId, `System Status: ERROR\n${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Handle /warnings — cảnh báo workload tháng hiện tại
+   */
+  async handleWarnings(bot: TelegramBot, chatId: string | number): Promise<void> {
+    await bot.sendMessage(chatId, '📊 Đang lấy dữ liệu cảnh báo...');
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+
+      const report = await this.participation.generateMonthlyReport(year, month);
+
+      if (report.rows.length === 0) {
+        await bot.sendMessage(
+          chatId,
+          `❌ Chưa có dữ liệu tháng ${month}/${year}.\nDùng lệnh /workload để xem hoặc sync dữ liệu trước.`,
+        );
+        return;
+      }
+
+      let msg = `⚠️ <b>Cảnh báo Workload ${month}/${year}</b>\n\n`;
+      msg += `👥 Tổng nhân sự: ${report.rows.length}\n`;
+      msg += `🔴 Vượt ngưỡng 30h: ${report.alerts.length}\n\n`;
+
+      if (report.alerts.length > 0) {
+        msg += `<b>Danh sách vượt ngưỡng:</b>\n`;
+        report.alerts.forEach((a) => {
+          msg += `• ${a.employeeName}: ${a.hours.toFixed(1)}h self-learning\n`;
+        });
+        msg += `\n💡 Dùng /analyze &lt;tên&gt; để phân tích chi tiết`;
+      } else {
+        msg += `✅ Tất cả nhân sự đều trong ngưỡng an toàn!`;
+      }
+
+      await bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
+    } catch (err) {
+      await bot.sendMessage(chatId, `❌ Lỗi lấy cảnh báo: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Handle /workload [year] [month] — báo cáo tháng
+   * Usage: /workload        → tháng hiện tại
+   *        /workload 2026 3 → tháng 3/2026
+   */
+  async handleWorkload(
+    bot: TelegramBot,
+    chatId: string | number,
+    args?: string[],
+  ): Promise<void> {
+    await bot.sendMessage(chatId, '📊 Đang tạo báo cáo workload...');
+    try {
+      const now = new Date();
+      const year = args?.[0] ? parseInt(args[0]) : now.getFullYear();
+      const month = args?.[1] ? parseInt(args[1]) : now.getMonth() + 1;
+
+      const report = await this.participation.generateMonthlyReport(year, month);
+
+      if (report.rows.length === 0) {
+        await bot.sendMessage(
+          chatId,
+          `❌ Chưa có dữ liệu tháng ${month}/${year}.\nSync dữ liệu từ ERP trước qua API /api/sync/workload`,
+        );
+        return;
+      }
+
+      const avgSL =
+        report.rows.reduce((sum, r) => sum + r.selfLearningHours, 0) / report.rows.length;
+      const avgLog =
+        report.rows.reduce((sum, r) => sum + r.projectHours, 0) / report.rows.length;
+
+      let msg = `📊 <b>Workload Report ${month}/${year}</b>\n\n`;
+      msg += `👥 Nhân sự: ${report.rows.length}\n`;
+      msg += `📈 Avg log dự án: ${avgLog.toFixed(1)}h\n`;
+      msg += `📉 Avg self-learning: ${avgSL.toFixed(1)}h\n`;
+      msg += `⚠️ Vượt ngưỡng 30h: ${report.alerts.length} người\n`;
+
+      if (report.alerts.length > 0) {
+        msg += `\n🔴 <b>Vượt ngưỡng:</b>\n`;
+        report.alerts.slice(0, 10).forEach((a) => {
+          msg += `• ${a.employeeName}: ${a.hours.toFixed(1)}h\n`;
+        });
+        if (report.alerts.length > 10) {
+          msg += `... và ${report.alerts.length - 10} người khác\n`;
+        }
+      }
+
+      // Top 3 lowest log
+      const lowest = [...report.rows]
+        .sort((a, b) => a.projectPercent - b.projectPercent)
+        .slice(0, 3);
+      msg += `\n📉 <b>Log ít nhất:</b>\n`;
+      lowest.forEach((r) => {
+        msg += `• ${r.employeeName}: ${r.projectHours.toFixed(1)}h log (${r.projectPercent.toFixed(0)}%)\n`;
+      });
+
+      msg += `\n💡 Dùng /analyze &lt;tên&gt; để phân tích AI từng người`;
+
+      await bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
+    } catch (err) {
+      await bot.sendMessage(chatId, `❌ Lỗi tạo báo cáo: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Handle /analyze <name> [year] [month] — AI phân tích nhân sự
+   * Usage: /analyze Nguyen Van A
+   *        /analyze Nguyen Van A 2026 3
+   */
+  async handleAnalyze(
+    bot: TelegramBot,
+    chatId: string | number,
+    args?: string[],
+  ): Promise<void> {
+    if (!args || args.length === 0) {
+      await bot.sendMessage(
+        chatId,
+        'Usage: /analyze &lt;tên nhân sự&gt; [năm] [tháng]\nVí dụ: /analyze Nguyen Van A\nVí dụ: /analyze Nguyen Van A 2026 3',
+        { parse_mode: 'HTML' },
+      );
+      return;
+    }
+
+    // Last two args may be year + month (both numeric)
+    const now = new Date();
+    let year = now.getFullYear();
+    let month = now.getMonth() + 1;
+    let nameParts = [...args];
+
+    if (nameParts.length >= 2) {
+      const last = nameParts[nameParts.length - 1];
+      const secondLast = nameParts[nameParts.length - 2];
+      if (/^\d{4}$/.test(secondLast) && /^\d{1,2}$/.test(last)) {
+        year = parseInt(secondLast);
+        month = parseInt(last);
+        nameParts = nameParts.slice(0, -2);
+      }
+    }
+
+    const employeeName = nameParts.join(' ');
+    await bot.sendMessage(chatId, `🔍 Đang phân tích AI cho "${employeeName}" tháng ${month}/${year}...`);
+
+    try {
+      const result = await this.workloadAnalysis.analyzeSelfLearning(employeeName, year, month);
+      await bot.sendMessage(chatId, result, { parse_mode: 'HTML' });
+    } catch (err) {
+      await bot.sendMessage(chatId, `❌ Lỗi phân tích: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Handle /insights [year] [month] — AI insights tổng quan team
+   */
+  async handleInsights(
+    bot: TelegramBot,
+    chatId: string | number,
+    args?: string[],
+  ): Promise<void> {
+    await bot.sendMessage(chatId, '🤖 Đang tạo AI insights...');
+    try {
+      const now = new Date();
+      const year = args?.[0] ? parseInt(args[0]) : now.getFullYear();
+      const month = args?.[1] ? parseInt(args[1]) : now.getMonth() + 1;
+
+      const result = await this.workloadAnalysis.generateTeamInsights(year, month);
+      await bot.sendMessage(chatId, result, { parse_mode: 'HTML' });
+    } catch (err) {
+      await bot.sendMessage(chatId, `❌ Lỗi AI insights: ${(err as Error).message}`);
     }
   }
 }

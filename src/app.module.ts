@@ -16,6 +16,7 @@ import { ApprovalsModule } from './approvals/approvals.module';
 import { SyncModule } from './sync/sync.module';
 import { FinancialModule } from './financial/financial.module';
 import { ERPModule } from './erp/erp.module';
+import { WorkloadModule } from './workload/workload.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ERPModule } from './erp/erp.module';
     SyncModule,
     FinancialModule,
     ERPModule,
+    WorkloadModule,
   ],
   controllers: [AppController],
   providers: [AppService],

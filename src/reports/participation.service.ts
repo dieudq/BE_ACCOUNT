@@ -1,186 +1,156 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { JiraAdapter } from '../adapters/jira.adapter';
-import { AttendanceAdapter } from '../adapters/attendance.adapter';
+
+export interface ProjectBreakdown {
+  projectCode: string;
+  projectName: string;
+  hours: number;
+  percent: number;
+}
 
 export interface ParticipationRow {
   employeeId: string;
+  employeeCode: string;
   employeeName: string;
   standardHours: number;
   projectHours: number;
   selfLearningHours: number;
   projectPercent: number;
   selfLearningPercent: number;
-  alert: boolean; // true if selfLearning > 30
-  projects: Array<{
-    projectCode: string;
-    projectName: string;
-    hours: number;
-    percent: number;
-  }>;
+  alert: boolean; // true if selfLearning > threshold
+  projects: ProjectBreakdown[];
 }
 
 @Injectable()
 export class ParticipationReportService {
-  constructor(
-    private prisma: PrismaService,
-    private jira: JiraAdapter,
-    private attendance: AttendanceAdapter,
-  ) {}
+  private readonly logger = new Logger(ParticipationReportService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Generate participation report for all employees in a month
+   * Generate participation report from synced local DB data.
+   * Primary source: ProjectParticipation (multi-project breakdown).
+   * Fallback: EmployeeHours (single-row summary if no ProjectParticipation data).
    */
-  async generateMonthlyReport(year: number, month: number): Promise<{
+  async generateMonthlyReport(
+    year: number,
+    month: number,
+    selfLearningThreshold = 30,
+  ): Promise<{
     month: number;
     year: number;
     reportDate: Date;
     rows: ParticipationRow[];
-    alerts: Array<{ employeeId: string; hours: number; message: string }>;
+    alerts: Array<{ employeeId: string; employeeName: string; hours: number; message: string }>;
   }> {
-    try {
-      // Get all users (employees)
-      const users = await this.prisma.user.findMany({
-        where: {
-          role: { in: ['employee', 'manager'] },
+    // Load all employees that have hours data for this month
+    const employeeHoursList = await this.prisma.employeeHours.findMany({
+      where: { year, month },
+      include: {
+        user: { select: { id: true, name: true, email: true, department: true } },
+      },
+    });
+
+    const rows: ParticipationRow[] = [];
+    const alerts: Array<{ employeeId: string; employeeName: string; hours: number; message: string }> = [];
+
+    for (const eh of employeeHoursList) {
+      const userId = eh.userId;
+      const stdHours = eh.stdHours ? parseFloat(eh.stdHours.toString()) : 160;
+      const loggedHours = eh.loggedHours ? parseFloat(eh.loggedHours.toString()) : 0;
+      const selfLearningHours = Math.max(0, stdHours - loggedHours);
+
+      // Load project breakdown from ProjectParticipation
+      const participations = await this.prisma.projectParticipation.findMany({
+        where: { userId, year, month },
+        include: {
+          project: { select: { code: true, name: true } },
         },
-        select: { id: true, name: true, joinDate: true },
+        orderBy: { loggedHours: 'desc' },
       });
 
-      const rows: ParticipationRow[] = [];
-      const alerts: Array<{ employeeId: string; hours: number; message: string }> = [];
+      const projects: ProjectBreakdown[] = participations.map((p) => ({
+        projectCode: p.project.code,
+        projectName: p.project.name,
+        hours: parseFloat(p.loggedHours.toString()),
+        percent: parseFloat(p.participationPercent.toString()),
+      }));
 
-      // Process each employee
-      for (const emp of users) {
-        // ✅ FIX P4: Calculate standard hours considering join date
-        const periodStart = new Date(year, month - 1, 1);
-        const periodEnd = new Date(year, month, 0);
-        
-        let adjustedStdHours = 160; // Default: full month
-        if (emp.joinDate) {
-          const joinDate = new Date(emp.joinDate);
-          if (joinDate > periodStart && joinDate <= periodEnd) {
-            // Employee joined within this month
-            const daysWorked = Math.ceil(
-              (periodEnd.getTime() - joinDate.getTime()) / (1000 * 60 * 60 * 24),
-            );
-            const totalDaysInMonth = Math.ceil(
-              (periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24),
-            );
-            adjustedStdHours = Math.round((160 * daysWorked) / totalDaysInMonth);
-          }
-        }
+      const projectHours = projects.reduce((sum, p) => sum + p.hours, 0) || loggedHours;
+      const projectPercent =
+        stdHours > 0 ? Math.round((projectHours / stdHours) * 10000) / 100 : 0;
+      const selfLearningPercent =
+        stdHours > 0 ? Math.round((selfLearningHours / stdHours) * 10000) / 100 : 0;
 
-        // Get standard hours (after subtracting leave)
-        const leaveStats = await this.attendance.calculateStandardWorkHours(emp.id, year, month);
-        const stdHours = Math.min(leaveStats.standardWorkHours, adjustedStdHours); // Use lower value
+      const hasAlert = selfLearningHours > selfLearningThreshold;
 
-        // Get employee hours (logged from Jira or manual entry)
-        const empHours = await this.prisma.employeeHours.findUnique({
-          where: {
-            userId_year_month: {
-              userId: emp.id,
-              year,
-              month,
-            },
-          },
-          include: {
-            project: true,
-          },
+      if (hasAlert) {
+        alerts.push({
+          employeeId: userId,
+          employeeName: eh.user.name,
+          hours: Math.round(selfLearningHours * 100) / 100,
+          message: `⚠️ Self-learning ${selfLearningHours.toFixed(1)}h > ${selfLearningThreshold}h threshold`,
         });
-
-        let totalProjectHours = 0;
-        const projectMap = new Map<string, { code: string; name: string; hours: number }>();
-
-        if (empHours) {
-          totalProjectHours = empHours.loggedHours 
-            ? typeof empHours.loggedHours === 'object' && 'toNumber' in empHours.loggedHours
-              ? (empHours.loggedHours as any).toNumber()
-              : parseFloat((empHours.loggedHours as any).toString())
-            : 0;
-
-          if (empHours.project) {
-            projectMap.set(empHours.project.id, {
-              code: empHours.project.code,
-              name: empHours.project.name,
-              hours: totalProjectHours,
-            });
-          }
-        }
-
-        // Calculate self-learning
-        const selfLearningHours = Math.max(0, leaveStats.standardWorkHours - totalProjectHours);
-        const projectPercent =
-          leaveStats.standardWorkHours > 0
-            ? Math.round((totalProjectHours / leaveStats.standardWorkHours) * 10000) / 100
-            : 0;
-        const selfLearningPercent =
-          leaveStats.standardWorkHours > 0
-            ? Math.round((selfLearningHours / leaveStats.standardWorkHours) * 10000) / 100
-            : 0;
-
-        // Check alert
-        const hasAlert = selfLearningHours > 30;
-
-        if (hasAlert) {
-          alerts.push({
-            employeeId: emp.id,
-            hours: selfLearningHours,
-            message: `⚠️ Self-learning hours exceeded 30h: ${selfLearningHours.toFixed(2)}h`,
-          });
-        }
-
-        const row: ParticipationRow = {
-          employeeId: emp.id,
-          employeeName: emp.name,
-          standardHours: leaveStats.standardWorkHours,
-          projectHours: Math.round(totalProjectHours * 100) / 100,
-          selfLearningHours: Math.round(selfLearningHours * 100) / 100,
-          projectPercent,
-          selfLearningPercent,
-          alert: hasAlert,
-          projects: Array.from(projectMap.values()).map((p) => ({
-            projectCode: p.code,
-            projectName: p.name,
-            hours: Math.round(p.hours * 100) / 100,
-            percent: Math.round((p.hours / leaveStats.standardWorkHours) * 10000) / 100,
-          })),
-        };
-
-        rows.push(row);
       }
 
-      return {
-        month,
-        year,
-        reportDate: new Date(),
-        rows: rows.sort((a, b) => a.employeeName.localeCompare(b.employeeName)),
-        alerts,
-      };
-    } catch (error) {
-      console.error('Error generating participation report:', error);
-      throw error;
+      rows.push({
+        employeeId: userId,
+        employeeCode: eh.user.email?.replace('@erp', '') ?? userId,
+        employeeName: eh.user.name,
+        standardHours: Math.round(stdHours * 100) / 100,
+        projectHours: Math.round(projectHours * 100) / 100,
+        selfLearningHours: Math.round(selfLearningHours * 100) / 100,
+        projectPercent,
+        selfLearningPercent,
+        alert: hasAlert,
+        projects,
+      });
     }
+
+    return {
+      month,
+      year,
+      reportDate: new Date(),
+      rows: rows.sort((a, b) => a.employeeName.localeCompare(b.employeeName)),
+      alerts: alerts.sort((a, b) => b.hours - a.hours),
+    };
   }
 
   /**
-   * Validate report: total % should = 100% (allow 0.5% error due to rounding)
+   * Validate: projectPercent + selfLearningPercent should sum to ~100%
    */
   validateReport(rows: ParticipationRow[]): Array<{ employeeId: string; error: string }> {
     const errors: Array<{ employeeId: string; error: string }> = [];
-
     for (const row of rows) {
       const total = row.projectPercent + row.selfLearningPercent;
-      const diff = Math.abs(total - 100);
-
-      if (diff > 0.5) {
+      if (Math.abs(total - 100) > 0.5) {
         errors.push({
           employeeId: row.employeeId,
-          error: `Total % = ${total}% (expected 100%, max error 0.5%)`,
+          error: `Total % = ${total.toFixed(2)}% (expected ~100%)`,
         });
       }
     }
-
     return errors;
+  }
+
+  /**
+   * Get employees approaching self-learning threshold (mid-month proactive check).
+   * Returns employees where selfLearningHours > threshold * 0.7
+   */
+  async getAtRiskEmployees(
+    year: number,
+    month: number,
+    threshold = 30,
+  ): Promise<Array<{ employeeId: string; employeeName: string; selfLearningHours: number; threshold: number }>> {
+    const report = await this.generateMonthlyReport(year, month, threshold);
+    return report.rows
+      .filter((r) => r.selfLearningHours >= threshold * 0.7)
+      .map((r) => ({
+        employeeId: r.employeeId,
+        employeeName: r.employeeName,
+        selfLearningHours: r.selfLearningHours,
+        threshold,
+      }))
+      .sort((a, b) => b.selfLearningHours - a.selfLearningHours);
   }
 }
