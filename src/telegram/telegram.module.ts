@@ -11,6 +11,7 @@ import { VouchersModule } from '../vouchers/vouchers.module';
 import { ApprovalsModule } from '../approvals/approvals.module';
 import { FinancialModule } from '../financial/financial.module';
 import { TelegramNotiService } from '../common/services/telegram-noti.service';
+import { WorkloadModule } from '../workload/workload.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { TelegramNotiService } from '../common/services/telegram-noti.service';
     VouchersModule,
     forwardRef(() => ApprovalsModule),
     FinancialModule,
+    WorkloadModule,
   ],
   providers: [
     TelegramService,

@@ -7,12 +7,21 @@ async function bootstrap() {
   
   // Swagger setup
   const config = new DocumentBuilder()
-    .setTitle('Accounting Bot API')
-    .setDescription('NestJS + Prisma + PostgreSQL')
-    .setVersion('1.0')
-    .addTag('health')
-    .addTag('vouchers')
-    .addTag('webhooks')
+    .setTitle('Accounting & Workload AI Bot API')
+    .setDescription(
+      'AI Agent tích hợp ERP — phân tích workload nhân sự, cảnh báo self-learning, báo cáo Excel.\n\n' +
+      '**Workload API:** `/workload/*`\n' +
+      '**Reports API:** `/api/reports/*`\n' +
+      '**Sync API:** `/api/sync/*`',
+    )
+    .setVersion('2.0')
+    .addBearerAuth()
+    .addTag('workload', 'Workload AI — phân tích & cảnh báo nhân sự')
+    .addTag('reports', 'Báo cáo tham gia dự án')
+    .addTag('sync', 'Đồng bộ dữ liệu từ ERP')
+    .addTag('vouchers', 'Phiếu chi')
+    .addTag('approvals', 'Phê duyệt')
+    .addTag('health', 'Health check')
     .build();
   
   const document = SwaggerModule.createDocument(app, config);
