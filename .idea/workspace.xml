@@ -6,13 +6,15 @@
   <component name="ChangeListManager">
     <list default="true" id="4a985f80-bf31-42dd-9e1d-6395c794e084" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/prisma/schema.prisma" beforeDir="false" afterPath="$PROJECT_DIR$/prisma/schema.prisma" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/approvals/approvals.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/approvals/approvals.module.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/erp/erp.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/erp/erp.module.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/chat/chat.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/chat/chat.module.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/chat/chat.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/chat/chat.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/common/common.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/common/common.module.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/financial/cashflow-template.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/financial/cashflow-template.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/financial/chart-of-accounts.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/financial/chart-of-accounts.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/financial/file-upload.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/financial/file-upload.controller.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/financial/gl-file-processor.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/financial/gl-file-processor.service.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/telegram/telegram.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/telegram.controller.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/telegram/telegram.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/telegram.module.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/webhooks/webhooks.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/webhooks/webhooks.controller.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/webhooks/webhooks.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/webhooks/webhooks.module.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -42,22 +44,33 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;C:\\Users\\ADMIN\\.openclaw\\workspace\\accounting-bot\\node_modules\\prettier&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;C:\\Users\\ADMIN\\.openclaw\\workspace\\accounting-bot\\node_modules\\typescript\\lib&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "JavaScript Debug.api.executor": "Debug",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "main",
+    "ignore.virus.scanning.warn.message": "true",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "prettierjs.PrettierConfiguration.Package": "C:\\Users\\ADMIN\\.openclaw\\workspace\\accounting-bot\\node_modules\\prettier",
+    "ts.external.directory.path": "C:\\Users\\ADMIN\\.openclaw\\workspace\\accounting-bot\\node_modules\\typescript\\lib",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
+  <component name="RunManager">
+    <configuration name="api" type="JavascriptDebugType" temporary="true" nameIsGenerated="true" uri="http://localhost:3000/api">
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="JavaScript Debug.api" />
+      </list>
+    </recent_temporary>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -84,11 +97,22 @@
       <workItem from="1774762605390" duration="8635000" />
       <workItem from="1774836090261" duration="16473000" />
       <workItem from="1774930741421" duration="596000" />
-      <workItem from="1775009476575" duration="5586000" />
+      <workItem from="1775009476575" duration="9938000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>

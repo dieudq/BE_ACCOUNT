@@ -220,18 +220,103 @@ export class CashflowTemplateService {
 
     console.log('\n📍 Filling GL data into sub-rows (by month)...');
 
-    // GL account → Sub-row mapping
+    // GL account → Sub-row mapping (based on actual template structure)
+    // Template has category rows and detail sub-rows. Fill sub-rows so formulas auto-calculate.
+    // 
+    // Structure:
+    // R6: Thu dự án (category) → R7-R9: Detail sub-rows
+    // R10: Thu đầu tư tài chính (category) → No sub-rows (single line)
+    // R11: Thu đầu tư R&D (category) → No sub-rows (single line)
+    // R12-R15: Thu khác + Lãi/lỗ (category + sub-rows)
+    // R17: Lương dự án (category) → R18-R22: Detail sub-rows
+    // R23: Quản lý văn phòng (category) → R24-R27: Detail sub-rows
+    // R28: Chi phí đảm bảo chất lượng (category) → R29-R30: Detail sub-rows
+    // R31: Hành chính/NHÂN SỰ (category) → R32-R33: Detail sub-rows
+    // R34: Kế toán/Tài Chính (category) → R35-R36: Detail sub-rows
+    // R37: Sales (category) → R38-R43: Detail sub-rows
+    // R44: Marketing (category) → R45-R48: Detail sub-rows
+    // R49-R65: Other categories
+    
     const glToSubRow = {
-      '515.3': 10, '515.5': 11, '515.2': 12, '711.2': 12, '711.1': 13, '515.1': 14, '635': 14,
-      '334.1': 18, '334.2': 19,
-      '6422.2': 24, '6422.3': 25, '6422.4': 26,
-      '154.1': 29, '154.2': 30,
-      '6421.2': 32,
+      // REVENUE - Thu dự án (6-9)
+      '511': 7,      // Main project revenue
+      '511.1': 7,    // Sub variants of 511
+      '511.2': 7,
+      '511.3': 7,
+      '5111': 8,     // Sold goods
+      '5112': 8,     // Sold finished products
+      '5113': 7,     // Service revenue
+      '5113.1': 7,   // T&M
+      '5113.2': 8,   // Fixed Price
+      '5118': 9,     // Other revenue
+      
+      // REVENUE - Thu đầu tư tài chính (10)
+      '515.3': 10,
+      
+      // REVENUE - Thu đầu tư R&D (11)
+      '515.5': 11,
+      '515.4': 15,   // Sub-detail under "Lãi/lỗ TG rút tiền"
+      
+      // REVENUE - Thu khác (12-15)
+      '515.2': 12,
+      '711.2': 12,
+      '711.1': 13,
+      '515.1': 14,
+      '635': 14,
+      
+      // SALARY - Lương dự án (17-22)
+      '334.1': 18,
+      '334.2': 19,
+      '334.4': 18,   // Project bonus (maps to project salary)
+      
+      // ADMIN/OFFICE - Quản lý văn phòng (23-27)
+      '6422.2': 25,   // Utilities (Điện/Nước/Gửi xe)
+      '6422.3': 26,   // Office supplies (mua sắm)
+      '6422.4': 26,   // Admin costs
+      '6422.5': 24,   // Internal activities -> "Chi phí thuê nhà" or general allocation
+      
+      // QA COST - Chi phí đảm bảo chất lượng (28-30)
+      '154.1': 29,    // NCTT
+      '154.2': 30,    // Vendor
+      '154.3': 30,    // Project tools/training
+      
+      // HR/ADMIN - Hành chính/Nhân Sự (31-33)
+      '6421.2': 32,   // HR salary
+      '331': 32,      // Social insurance (linked to HR)
+      '334.3': 32,    // Accounting staff salary (also admin)
+      '334.5': 32,    // HR staff salary
+      '334.8': 33,    // CSH/Admin (internal activities)
+      
+      // ACCOUNTING - Kế toán/Tài Chính (34-36)
       '6422.6': 35,
-      '6421.3': 38, '6421.4': 39, '6421.5': 40, '6421.6': 41, '6421.7': 42,
-      '6421.8': 45, '6421.9': 46,
-      '821': 54,
-      '334-10': 58, '334-11': 59, '334-12': 60, '6421-13': 61, '6421-14': 62,
+      
+      // SALES (37-43)
+      '6421.3': 38,
+      '6421.4': 39,
+      '6421.5': 40,
+      '6421.6': 41,
+      '6421.7': 42,
+      '6421-19': 43,  // Commission
+      '6421-11': 42,  // Equipment (sales support)
+      '334.6': 38,    // Sales staff salary
+      
+      // MARKETING (44-48)
+      '6421.8': 46,
+      '6421.9': 47,
+      '6421-15': 45,  // Marketing staff salary
+      '334.7': 46,    // Marketing staff salary
+      
+      // OTHER / BONUS (48-65)
+      '811': 63,      // Other costs (give/loan, credit)
+      '2411': 64,     // Loans
+      
+      // BALANCE SHEET - these shouldn't normally appear but map as fallback
+      '1111': 7,      // Cash -> map to revenue placeholder
+      '1113': 7,      // Cash -> map to revenue placeholder
+      '1121.1': 7,    // Bank -> map to revenue placeholder
+      '1121.7': 7,    // Bank -> map to revenue placeholder
+      '131.1': 7,     // AR -> map to revenue placeholder
+      '131.2': 7,     // AR -> map to revenue placeholder
     };
 
     let totalFilled = 0;

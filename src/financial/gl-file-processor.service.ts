@@ -81,10 +81,15 @@ export class GLFileProcessorService {
       // Export
       console.log('💾 Exporting to Excel...');
       const exportsDir = path.join(process.cwd(), 'exports');
+      
+      // Use accounting period from GL file (not today's date!)
+      // glData.period format: "2026-01" or "2026-03"
+      const exportFilename = `cashflow_${glData.period}.xlsx`;
+      
       const outputPath = await this.cashflowTemplate.exportToExcel(
         filledTemplate,
         exportsDir,
-        `cashflow_${year}_full_${Date.now()}.xlsx`,
+        exportFilename,
       );
 
       console.log(`✅ Processing complete: ${outputPath}`);

@@ -13,6 +13,7 @@ export class FileUploadController {
   /**
    * POST /api/exports/upload-gl-file
    * Upload GL Detail Excel file → Parse → Generate Cashflow Excel
+   * File naming: cashflow_YYYY-MM.xlsx (e.g., cashflow_2026-04.xlsx)
    */
   @Post('upload-gl-file')
   @UseInterceptors(
@@ -66,10 +67,10 @@ export class FileUploadController {
         coaPath,
       );
 
-      // Send file as download
+      // Send file as download with accounting period naming (from GL file)
       if (res) {
-        const filename = path.basename(outputPath);
-        res.download(outputPath, filename, (err) => {
+        const downloadFilename = path.basename(outputPath);
+        res.download(outputPath, downloadFilename, (err) => {
           if (err) {
             console.error('Download error:', err);
           }

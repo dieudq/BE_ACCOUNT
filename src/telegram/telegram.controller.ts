@@ -3,6 +3,7 @@ import { TelegramService } from './telegram.service';
 import { TelegramGroupService } from './telegram-group.service';
 import { GLFileProcessorService } from '../financial/gl-file-processor.service';
 import { VoucherApprovalService } from '../approvals/voucher-approval.service';
+import { BotCommandsService } from './bot-commands.service';
 import { PrismaService } from '../prisma/prisma.service';
 import axios from 'axios';
 import * as path from 'path';
@@ -17,6 +18,7 @@ export class TelegramController {
     private telegramGroup: TelegramGroupService,
     private glProcessor: GLFileProcessorService,
     private voucherApprovalService: VoucherApprovalService,
+    private botCommands: BotCommandsService,
     private prisma: PrismaService,
   ) {}
 
@@ -59,6 +61,55 @@ export class TelegramController {
 
       // Handle text message
       if (text) {
+        // Check for commands first
+        if (text.startsWith('/')) {
+          const bot = this.telegram.getBot();
+          const parts = text.split(' ');
+          const command = parts[0].toLowerCase();
+
+          try {
+            switch (command) {
+              case '/pending':
+                const pendingMsg = await this.botCommands.getPendingVouchers(chat.id.toString());
+                await bot.sendMessage(chat.id, pendingMsg, { parse_mode: 'HTML' });
+                break;
+
+              case '/approvals':
+                const approvalsMsg = await this.botCommands.getApprovalsSummary(chat.id.toString());
+                await bot.sendMessage(chat.id, approvalsMsg, { parse_mode: 'HTML' });
+                break;
+
+              case '/status':
+                if (parts.length < 2) {
+                  await bot.sendMessage(chat.id, '❌ Vui lòng cung cấp mã phiếu chi: /status AX99', { parse_mode: 'HTML' });
+                } else {
+                  const code = parts[1];
+                  const statusMsg = await this.botCommands.getVoucherStatus(code);
+                  await bot.sendMessage(chat.id, statusMsg, { parse_mode: 'HTML' });
+                }
+                break;
+
+              case '/list':
+                const listMsg = await this.botCommands.listAllVouchers(chat.id.toString());
+                await bot.sendMessage(chat.id, listMsg, { parse_mode: 'HTML' });
+                break;
+
+              case '/help':
+                const helpMsg = this.botCommands.getHelpMessage();
+                await bot.sendMessage(chat.id, helpMsg, { parse_mode: 'HTML' });
+                break;
+
+              default:
+                await bot.sendMessage(chat.id, `❌ Lệnh không biết: ${command}\n\nGõ /help để xem hướng dẫn`, { parse_mode: 'HTML' });
+            }
+          } catch (cmdError) {
+            this.logger.error(`Command error: ${cmdError.message}`);
+            await bot.sendMessage(chat.id, `❌ Lỗi: ${cmdError.message}`, { parse_mode: 'HTML' });
+          }
+          return { ok: true };
+        }
+
+        // Not a command - handle as regular message
         await this.telegram.handleMessage(chat.id, text, from?.id?.toString());
       }
 
