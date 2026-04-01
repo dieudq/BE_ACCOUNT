@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VoucherAutomationService } from '../vouchers/voucher-automation.service';
 import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
 import { BotCommandService } from './bot-command.service';
+import { GroqService } from './groq.service';
 import TelegramBot from 'node-telegram-bot-api';
 import axios from 'axios';
 
@@ -19,6 +20,7 @@ export class TelegramService implements OnModuleInit {
     private voucherAutomation: VoucherAutomationService,
     private approvalWorkflow: ApprovalWorkflowService,
     private commandService: BotCommandService,
+    private groqService: GroqService,
   ) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
@@ -161,6 +163,40 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
+      if (cmd === '/broadcast') {
+        if (user.role !== 'admin') {
+          await this.bot.sendMessage(chatId, '❌ Bạn không có quyền thực hiện lệnh này (yêu cầu quyền Admin).');
+          return;
+        }
+        await this.commandService.handleBroadcast(this.bot, chatId, args);
+        return;
+      }
+
+      // === LLM (GROQ) HANDLING for natural language ===
+      if (!message.startsWith('/')) {
+        // Show "typing" status
+        await this.bot.sendChatAction(chatId, 'typing');
+
+        const response = await this.groqService.chat(message, userIdForQuery);
+
+        try {
+          // Try sending with Markdown
+          await this.bot.sendMessage(chatId, response, { parse_mode: 'Markdown' });
+        } catch (error) {
+          // If Markdown fails (bad entities), fallback to Plain Text
+          console.warn('❌ Telegram Markdown error:', error.message);
+          await this.bot.sendMessage(chatId, response);
+        }
+        return;
+      }
+
+      if (message.startsWith('YES ')) {
+        const confirmationId = message.substring(4).trim();
+        const result = await this.voucherAutomation.confirmVoucher(userIdForQuery, confirmationId);
+        await this.bot.sendMessage(chatId, result.message);
+        return;
+      }
+
       // === LEGACY COMMANDS (Phase 3-4 compatibility) ===
       if (message.startsWith('APPROVE ')) {
         const requestId = message.substring(8).trim();
@@ -212,14 +248,6 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
-      // PHASE 3: Check if message is voucher confirmation
-      if (message.startsWith('YES ')) {
-        const confirmationId = message.substring(4).trim();
-        const result = await this.voucherAutomation.confirmVoucher(userIdForQuery, confirmationId);
-        await this.bot.sendMessage(chatId, result.message);
-        return;
-      }
-
       if (message.toUpperCase() === 'NO') {
         const pending = this.voucherAutomation.getPendingConfirmations(userIdForQuery);
         if (pending.length > 0) {
@@ -240,7 +268,12 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
-      // Fallback: Get AI response
+      // Fallback: Get AI response or Unknown Command
+      if (message.startsWith('/')) {
+        await this.bot.sendMessage(chatId, `❌ Lệnh không xác định: ${cmd}\nGõ /help để xem hướng dẫn.`);
+        return;
+      }
+
       const answer = await this.chat.processQuery(message, user.id);
 
       // Save to database

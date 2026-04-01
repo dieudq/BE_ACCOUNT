@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { ParticipationReportService } from '../reports/participation.service';
 import { ExcelExportService } from '../reports/excel-export.service';
 import { TelegramService } from '../telegram/telegram.service';
@@ -26,10 +26,9 @@ export class MonthlyScheduler {
    * 2. Generate + export Excel
    * 3. Gửi Telegram
    */
-  @Cron('0 8 1 * *', { timeZone: 'Asia/Ho_Chi_Minh' })
+  @Cron(CronExpression.EVERY_MINUTE)
   async generateMonthlyParticipationReport() {
     const now = new Date();
-    // Report cho tháng trước
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const year = lastMonth.getFullYear();
     const month = lastMonth.getMonth() + 1;
@@ -47,7 +46,10 @@ export class MonthlyScheduler {
       }
 
       // Step 2: Generate report
-      const report = await this.participation.generateMonthlyReport(year, month);
+      const report = await this.participation.generateMonthlyReport(
+        year,
+        month,
+      );
       const errors = this.participation.validateReport(report.rows);
 
       if (errors.length > 0) {
@@ -55,11 +57,19 @@ export class MonthlyScheduler {
       }
 
       // Step 3: Export Excel
-      const buffer = await this.excel.exportParticipationReport(report.rows, year, month);
+      const buffer = await this.excel.exportParticipationReport(
+        report.rows,
+        year,
+        month,
+      );
       const reportsDir = path.join(process.cwd(), 'tmp_reports');
-      if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir, { recursive: true });
+      if (!fs.existsSync(reportsDir))
+        fs.mkdirSync(reportsDir, { recursive: true });
 
-      const excelPath = path.join(reportsDir, `workload-${year}-${String(month).padStart(2, '0')}.xlsx`);
+      const excelPath = path.join(
+        reportsDir,
+        `workload-${year}-${String(month).padStart(2, '0')}.xlsx`,
+      );
       fs.writeFileSync(excelPath, buffer);
 
       // Step 4: Send Telegram
@@ -71,17 +81,25 @@ export class MonthlyScheduler {
         `📊 <b>Báo cáo Workload ${month}/${year}</b>\n\n` +
         `👥 Tổng nhân sự: ${report.rows.length}\n` +
         `⚠️ Vượt ngưỡng 30h: ${report.alerts.length}\n` +
-        (report.alerts.length > 0 ? `\n🔴 <b>Danh sách:</b>\n${alertLines}\n` : '') +
+        (report.alerts.length > 0
+          ? `\n🔴 <b>Danh sách:</b>\n${alertLines}\n`
+          : '') +
         `\n📁 File: workload-${year}-${String(month).padStart(2, '0')}.xlsx`;
 
       const hrChatId = process.env.HR_TELEGRAM_CHAT_ID;
       if (hrChatId) {
-        await this.telegram.getBot().sendMessage(hrChatId, message, { parse_mode: 'HTML' });
+        await this.telegram
+          .getBot()
+          .sendMessage(hrChatId, message, { parse_mode: 'HTML' });
         // Also send the Excel file
         await this.telegram
           .getBot()
-          .sendDocument(hrChatId, excelPath, { caption: `Workload report ${month}/${year}` })
-          .catch((err) => this.logger.warn(`⚠️ Failed to send Excel: ${err.message}`));
+          .sendDocument(hrChatId, excelPath, {
+            caption: `Workload report ${month}/${year}`,
+          })
+          .catch((err) =>
+            this.logger.warn(`⚠️ Failed to send Excel: ${err.message}`),
+          );
       }
 
       await this.prisma.botLog.create({
@@ -99,9 +117,14 @@ export class MonthlyScheduler {
         },
       });
 
-      this.logger.log(`✅ [Scheduler] Monthly report done: ${report.rows.length} employees, ${report.alerts.length} alerts`);
+      this.logger.log(
+        `✅ [Scheduler] Monthly report done: ${report.rows.length} employees, ${report.alerts.length} alerts`,
+      );
     } catch (error: any) {
-      this.logger.error(`❌ [Scheduler] Monthly report failed: ${error.message}`, error.stack);
+      this.logger.error(
+        `❌ [Scheduler] Monthly report failed: ${error.message}`,
+        error.stack,
+      );
       await this.prisma.botLog.create({
         data: {
           action: 'MONTHLY_WORKLOAD_REPORT',
@@ -128,7 +151,11 @@ export class MonthlyScheduler {
       // Sync current month first
       await this.sync.syncMonthlyWorkloadReport(year, month);
 
-      const risks = await this.participation.getAtRiskEmployees(year, month, 30);
+      const risks = await this.participation.getAtRiskEmployees(
+        year,
+        month,
+        30,
+      );
       const exceeded = risks.filter((r) => r.selfLearningHours > 30);
       const approaching = risks.filter((r) => r.selfLearningHours <= 30);
 
@@ -140,12 +167,16 @@ export class MonthlyScheduler {
       const lines: string[] = [];
       if (exceeded.length > 0) {
         lines.push('🔴 <b>Đã vượt ngưỡng:</b>');
-        exceeded.forEach((r) => lines.push(`• ${r.employeeName}: ${r.selfLearningHours.toFixed(1)}h`));
+        exceeded.forEach((r) =>
+          lines.push(`• ${r.employeeName}: ${r.selfLearningHours.toFixed(1)}h`),
+        );
       }
       if (approaching.length > 0) {
         lines.push('\n🟡 <b>Đang tiến gần ngưỡng:</b>');
         approaching.forEach((r) =>
-          lines.push(`• ${r.employeeName}: ${r.selfLearningHours.toFixed(1)}h / 30h`),
+          lines.push(
+            `• ${r.employeeName}: ${r.selfLearningHours.toFixed(1)}h / 30h`,
+          ),
         );
       }
 
@@ -156,14 +187,18 @@ export class MonthlyScheduler {
 
       const hrChatId = process.env.HR_TELEGRAM_CHAT_ID;
       if (hrChatId) {
-        await this.telegram.getBot().sendMessage(hrChatId, message, { parse_mode: 'HTML' });
+        await this.telegram
+          .getBot()
+          .sendMessage(hrChatId, message, { parse_mode: 'HTML' });
       }
 
       this.logger.log(
         `⚠️ [Scheduler] Mid-month: ${exceeded.length} exceeded, ${approaching.length} approaching`,
       );
     } catch (error: any) {
-      this.logger.error(`❌ [Scheduler] Mid-month check failed: ${error.message}`);
+      this.logger.error(
+        `❌ [Scheduler] Mid-month check failed: ${error.message}`,
+      );
     }
   }
 }

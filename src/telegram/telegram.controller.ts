@@ -100,7 +100,9 @@ export class TelegramController {
                 break;
 
               default:
-                await bot.sendMessage(chat.id, `❌ Lệnh không biết: ${command}\n\nGõ /help để xem hướng dẫn`, { parse_mode: 'HTML' });
+                // If command not handled here, let TelegramService handle it (LLM or other commands)
+                await this.telegram.handleMessage(chat.id, text, from?.id?.toString());
+                return { ok: true };
             }
           } catch (cmdError) {
             this.logger.error(`Command error: ${cmdError.message}`);

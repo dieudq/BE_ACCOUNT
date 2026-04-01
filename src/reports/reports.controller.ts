@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Query, Res, HttpStatus } from '@nestjs/common';
-import { Response } from 'express';
+import type { Response } from 'express';
 import { ParticipationReportService } from './participation.service';
 import { ExcelExportService } from './excel-export.service';
 

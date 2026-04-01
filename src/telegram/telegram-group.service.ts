@@ -1,10 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from './telegram.service';
 
 @Injectable()
 export class TelegramGroupService {
-  constructor(private prisma: PrismaService, private telegram: TelegramService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => TelegramService))
+    private telegram: TelegramService,
+  ) {}
 
   /**
    * Register a new group (called when bot receives message in new group)

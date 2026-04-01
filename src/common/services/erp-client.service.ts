@@ -70,7 +70,7 @@ export class ERPClientService {
 
     const username = process.env.ERP_USERNAME;
     const password = process.env.ERP_PASSWORD;
-    const erpUrl = process.env.ERP_API_URL || 'http://localhost:3100';
+    const erpUrl = process.env.ERP_API_URL || 'http://localhost:9999';
 
     if (!username || !password) {
       throw new Error('ERP_USERNAME or ERP_PASSWORD not configured');
@@ -104,6 +104,7 @@ export class ERPClientService {
     month: string,
     deptCode?: string,
   ): Promise<ERPMonthlyReport> {
+    console.log(month);
     const token = await this.login();
     const erpUrl = process.env.ERP_API_URL || 'http://localhost:3100';
 
@@ -229,8 +230,8 @@ export class ERPClientService {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const erpUrl = process.env.ERP_API_URL || 'http://localhost:3100';
-      const resp = await fetch(`${erpUrl}/api/health`, { signal: AbortSignal.timeout(5000) });
+      const erpUrl = process.env.ERP_API_URL || 'http://localhost:9999';
+      const resp = await fetch(`${erpUrl}/api/ui/health`, { signal: AbortSignal.timeout(5000) });
       return resp.ok;
     } catch {
       return false;

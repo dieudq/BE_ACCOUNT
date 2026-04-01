@@ -22,7 +22,7 @@ export class DataSyncService {
     deptCode?: string,
   ): Promise<{ synced: number; atRisk: number; message: string }> {
     const monthStr = `${year}-${String(month).padStart(2, '0')}`;
-
+    console.log(month);
     try {
       const healthy = await this.erpClient.healthCheck();
       if (!healthy) {

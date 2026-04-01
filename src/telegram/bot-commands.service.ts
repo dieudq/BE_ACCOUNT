@@ -190,8 +190,9 @@ export class BotCommandsService {
 /approvals - 📊 Xem tóm tắt phê duyệt
 /status &lt;code&gt; - 🔍 Chi tiết phiếu chi (vd: /status AX99)
 /list - 📑 Danh sách tất cả phiếu chi
+/broadcast &lt;text&gt; - 📢 Gửi tin nhắn full nhóm (Admin)
 /help - ℹ️ Xem hướng dẫn này
 
-💡 Ví dụ: <code>/status AX99</code>`;
+💡 Ví dụ: <code>/status AX99</code> hoặc <code>/broadcast Chào mọi người!</code>`;
   }
 }

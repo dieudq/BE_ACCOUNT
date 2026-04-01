@@ -1,5 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { TelegramService } from './telegram.service';
+import { GroqService } from './groq.service';
+import { CashflowTemplateService } from '../financial/cashflow-template.service';
 import { TelegramGroupService } from './telegram-group.service';
 import { BotCommandService } from './bot-command.service';
 import { BotCommandsService } from './bot-commands.service';
@@ -25,6 +27,8 @@ import { WorkloadModule } from '../workload/workload.module';
   ],
   providers: [
     TelegramService,
+    GroqService,
+    CashflowTemplateService,
     TelegramGroupService,
     BotCommandService,
     BotCommandsService,

@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkloadAnalysisService } from '../workload/workload-analysis.service';
 import { ParticipationReportService } from '../reports/participation.service';
+import { TelegramGroupService } from './telegram-group.service';
 import TelegramBot from 'node-telegram-bot-api';
 
 @Injectable()
@@ -10,6 +11,8 @@ export class BotCommandService {
     private prisma: PrismaService,
     private workloadAnalysis: WorkloadAnalysisService,
     private participation: ParticipationReportService,
+    @Inject(forwardRef(() => TelegramGroupService))
+    private telegramGroup: TelegramGroupService,
   ) {}
 
   /**
@@ -31,6 +34,8 @@ export class BotCommandService {
 /analyze &lt;name&gt; - AI phân tích nhân sự
 /insights [year] [month] - AI insights
 
+── System (Admin) ──
+/broadcast <text> - Gửi tin nhắn full nhóm
 /help - Xem đầy đủ hướng dẫn
     `.trim();
 
@@ -55,12 +60,16 @@ export class BotCommandService {
 /status - System health check
 
 ── Workload AI ──
-/warnings - Cảnh báo self-learning tháng này
+/warnings - Cảnh báo tháng này
 /workload [year] [month] - Báo cáo workload
   Usage: /workload 2026 3
 /analyze &lt;name&gt; [year] [month] - AI phân tích nhân sự
   Usage: /analyze Nguyen Van A
 /insights [year] [month] - AI insights tổng quan team
+
+── System (Admin) ──
+/broadcast <text> - Gửi tin nhắn full nhóm (Admin only)
+  Usage: /broadcast Thông báo họp lúc 10h sáng mai.
 
 /help - Show this message
     `.trim();
@@ -432,6 +441,30 @@ Last check: ${new Date().toLocaleString('en-US')}
       await bot.sendMessage(chatId, result, { parse_mode: 'HTML' });
     } catch (err) {
       await bot.sendMessage(chatId, `❌ Lỗi AI insights: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Handle /broadcast <text> command — Send message to all registered groups
+   */
+  async handleBroadcast(
+    bot: TelegramBot,
+    chatId: string | number,
+    args?: string[],
+  ): Promise<void> {
+    if (!args || args.length === 0) {
+      await bot.sendMessage(chatId, '❌ Vui lòng nhập nội dung tin nhắn cần gửi.\nSử dụng: /broadcast <nội dung>');
+      return;
+    }
+
+    const message = args.join(' ');
+    await bot.sendMessage(chatId, `📢 Đang bắt đầu gửi tin nhắn đến tất cả các nhóm...`);
+
+    try {
+      await this.telegramGroup.sendToAllGroups(message);
+      await bot.sendMessage(chatId, `✅ Đã hoàn thành gửi tin nhắn broadcast.`);
+    } catch (err) {
+      await bot.sendMessage(chatId, `❌ Lỗi khi gửi broadcast: ${(err as Error).message}`);
     }
   }
 }

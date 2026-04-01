@@ -335,7 +335,12 @@ export class CashflowTemplateService {
         const accountCode = (record.counterAccount as string).trim();
         const debit = (record.debitAmount as number) || 0;
         const credit = (record.creditAmount as number) || 0;
-        const amount = debit - credit; // Net
+        
+        // Pick the actual transaction amount (the non-zero value)
+        // Usually, in a GL detail, one side is 0 and the other side has the value.
+        // We just want to "fill exactly what's there" (usually the larger absolute value)
+        const amount = debit > 0 ? debit : credit;
+        
         const desc = record.description || '';
 
         // Find sub-row for this account
