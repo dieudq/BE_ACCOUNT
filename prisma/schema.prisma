@@ -63,6 +63,7 @@ model Voucher {
   status          String    @default("pending")
   approvalLevel   Int       @default(0)
   isLocked        Boolean   @default(false) // R3: Lock after PhieuChi created
+  metadata        Json?     // Store ERP payload + details for all approvers
   createdAt       DateTime  @default(now())
   approvedAt      DateTime?
   paidAt          DateTime?

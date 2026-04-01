@@ -1,17 +1,23 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Logger } from '@nestjs/common';
 import { TelegramService } from './telegram.service';
 import { TelegramGroupService } from './telegram-group.service';
 import { GLFileProcessorService } from '../financial/gl-file-processor.service';
+import { VoucherApprovalService } from '../approvals/voucher-approval.service';
+import { PrismaService } from '../prisma/prisma.service';
 import axios from 'axios';
 import * as path from 'path';
 import * as fs from 'fs';
 
 @Controller('webhooks/telegram')
 export class TelegramController {
+  private readonly logger = new Logger(TelegramController.name);
+
   constructor(
     private telegram: TelegramService,
     private telegramGroup: TelegramGroupService,
     private glProcessor: GLFileProcessorService,
+    private voucherApprovalService: VoucherApprovalService,
+    private prisma: PrismaService,
   ) {}
 
   @Post()
@@ -19,7 +25,13 @@ export class TelegramController {
     console.log(`📨 Telegram Webhook received`);
 
     try {
-      const { message, edited_message } = payload;
+      const { message, edited_message, callback_query } = payload;
+      
+      // Handle button callbacks (approve/reject)
+      if (callback_query) {
+        return await this.handleCallbackQuery(callback_query);
+      }
+
       const msg = message || edited_message;
 
       if (!msg) {
@@ -54,6 +66,125 @@ export class TelegramController {
     } catch (error) {
       console.error('Error handling Telegram webhook:', error);
       return { ok: false, error: error.message };
+    }
+  }
+
+  /**
+   * Handle button callback (approve/reject)
+   */
+  private async handleCallbackQuery(callbackQuery: any) {
+    const { id: callbackId, from, data: callbackData, message } = callbackQuery;
+    const chatId = message?.chat?.id;
+
+    this.logger.log(`🔘 Callback received: ${callbackData} from ${from?.id}`);
+
+    try {
+      const bot = this.telegram.getBot();
+
+      // Parse callback data: voucher_approve_ID or voucher_reject_ID
+      if (callbackData.startsWith('voucher_approve_')) {
+        const voucherId = callbackData.replace('voucher_approve_', '');
+        
+        // Get pending approval for this voucher by current approver
+        // Query for the first pending approval (earliest in chain)
+        const pendingApproval = await this.prisma.approval.findFirst({
+          where: { 
+            voucherId,
+            status: 'pending'
+          },
+          orderBy: { createdAt: 'asc' }
+        });
+
+        if (!pendingApproval || !pendingApproval.approvedBy) {
+          await bot.answerCallbackQuery(callbackId, {
+            text: '⚠️ Phiếu chi đã được duyệt hoặc không có để duyệt',
+            show_alert: true,
+          });
+          return { ok: true };
+        }
+
+        const approverEmail = pendingApproval.approvedBy;
+        
+        this.logger.log(`✅ Approving voucher ${voucherId} by ${approverEmail}`);
+        
+        const result = await this.voucherApprovalService.approve(voucherId, approverEmail);
+        
+        if (result) {
+          await bot.answerCallbackQuery(callbackId, {
+            text: '✅ Phiếu chi đã được duyệt!',
+            show_alert: false,
+          });
+          
+          // Edit message to show approval status
+          await bot.editMessageText(
+            `✅ Bạn đã duyệt phiếu chi này.\n\n⏳ Chờ duyệt từ người tiếp theo...`,
+            { chat_id: chatId, message_id: message.message_id }
+          );
+        } else {
+          await bot.answerCallbackQuery(callbackId, {
+            text: '❌ Lỗi duyệt phiếu chi!',
+            show_alert: true,
+          });
+        }
+        
+      } else if (callbackData.startsWith('voucher_reject_')) {
+        const voucherId = callbackData.replace('voucher_reject_', '');
+        
+        // Get pending approval
+        const pendingApproval = await this.prisma.approval.findFirst({
+          where: { 
+            voucherId,
+            status: 'pending'
+          },
+          orderBy: { createdAt: 'asc' }
+        });
+
+        if (!pendingApproval || !pendingApproval.approvedBy) {
+          await bot.answerCallbackQuery(callbackId, {
+            text: '⚠️ Phiếu chi không có để từ chối',
+            show_alert: true,
+          });
+          return { ok: true };
+        }
+
+        const approverEmail = pendingApproval.approvedBy;
+        
+        this.logger.log(`❌ Rejecting voucher ${voucherId} by ${approverEmail}`);
+        
+        const result = await this.voucherApprovalService.reject(
+          voucherId,
+          approverEmail,
+          'Rejected via Telegram button'
+        );
+        
+        if (result) {
+          await bot.answerCallbackQuery(callbackId, {
+            text: '❌ Phiếu chi đã bị từ chối!',
+            show_alert: false,
+          });
+          
+          // Edit message to show rejection status
+          await bot.editMessageText(
+            `❌ Bạn đã từ chối phiếu chi này.\n\nNgười lập sẽ được thông báo để sửa chữa.`,
+            { chat_id: chatId, message_id: message.message_id }
+          );
+        } else {
+          await bot.answerCallbackQuery(callbackId, {
+            text: '❌ Lỗi từ chối phiếu chi!',
+            show_alert: true,
+          });
+        }
+      }
+
+      return { ok: true };
+    } catch (error) {
+      this.logger.error(`Error handling callback: ${error.message}`);
+      const bot = this.telegram.getBot();
+      await bot.answerCallbackQuery(callbackId, {
+        text: `❌ Lỗi: ${error.message}`,
+        show_alert: true,
+      });
+      return { ok: false };
     }
   }
 
