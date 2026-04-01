@@ -1,15 +1,32 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common'; // Thêm forwardRef
+import { HttpModule } from '@nestjs/axios';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TelegramModule } from '../telegram/telegram.module';
 import { ERPEventListenerService } from './erp-event-listener.service';
 import { ERPEventSimulatorService } from './erp-event-simulator.service';
 import { ERPWebhookController } from './erp-webhook.controller';
-import { ERPClientService } from '../common/services/erp-client.service';
+import { ErpClientService } from './erp-client.service';
 
 @Module({
-  imports: [PrismaModule, TelegramModule],
-  providers: [ERPEventListenerService, ERPEventSimulatorService, ERPClientService], // <--- THÊM VÀO ĐÂY
+  imports: [
+    PrismaModule,
+    // 🛡️ Dùng forwardRef ở đây vì TelegramModule cũng đang import ERPModule
+    forwardRef(() => TelegramModule),
+    HttpModule.register({
+      timeout: 10000,
+      maxRedirects: 5,
+    }),
+  ],
+  providers: [
+    ERPEventListenerService,
+    ERPEventSimulatorService,
+    ErpClientService,
+  ],
   controllers: [ERPWebhookController],
-  exports: [ERPEventListenerService, ERPEventSimulatorService, ERPClientService], // <--- EXPORT RA NGOÀI
+  exports: [
+    ERPEventListenerService,
+    ERPEventSimulatorService,
+    ErpClientService,
+  ],
 })
 export class ERPModule {}

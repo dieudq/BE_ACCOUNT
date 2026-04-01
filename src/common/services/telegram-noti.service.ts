@@ -42,8 +42,6 @@ export class TelegramNotiService {
           inline_keyboard: buttons,
         },
       };
-      this.logger.log(`📤 Sending to Telegram with buttons: ${JSON.stringify(payload)}`);
-      
       const response = await axios.post(`${this.telegramApiUrl}/sendMessage`, payload);
       this.logger.log(`✅ Telegram message with buttons sent to ${chatId}`);
       return response.data;

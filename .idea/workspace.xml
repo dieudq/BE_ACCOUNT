@@ -5,93 +5,20 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="4a985f80-bf31-42dd-9e1d-6395c794e084" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/src/erp/erp-client.service.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_0_undefined_1774853862874.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_0_undefined_1774854766369.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026-01.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/exports/cashflow_2026-01.xlsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026-04.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774854827258.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774855177611.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774855627389.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774856589009.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774856688306.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774856942526.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774857025680.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774857131812.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774857230639.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774857336855.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774857513720.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_01_1774857647920.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774857970223.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774862587599.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774864748093.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774864973609.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774865118487.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774866068342.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774866201885.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774866255030.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774866457156.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774866810708.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774867378708.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774868455504.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774931452611.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774931758663.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774931985601.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1774932056835.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1775016451821.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1775016755629.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow_2026_full_1775017187363.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exports/cashflow__1774852759606.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/common/services/erp-client.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/common/services/erp-client.service.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/financial/cashflow-template.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/financial/cashflow-template.service.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/reports/reports.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/reports/reports.controller.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/prisma/schema.prisma" beforeDir="false" afterPath="$PROJECT_DIR$/prisma/schema.prisma" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/common/services/telegram-noti.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/common/services/telegram-noti.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/erp/erp.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/erp/erp.module.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/scheduler/monthly.scheduler.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/scheduler/monthly.scheduler.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/sync/data-sync.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/sync/data-sync.service.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/telegram/bot-command.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/bot-command.service.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/telegram/bot-commands.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/bot-commands.service.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/telegram/telegram-group.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/telegram-group.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/telegram/telegram-voucher.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/telegram-voucher.service.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/telegram/telegram.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/telegram.controller.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/telegram/telegram.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/telegram.module.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/telegram/telegram.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/telegram.service.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774851797305_Danh_sach_he_thong_tai_khoan_.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774852531931_Danh_sach_he_thong_tai_khoan_.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774852759543_Danh_sach_he_thong_tai_khoan_.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774853862569_Danh_sach_he_thong_tai_khoan_.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774854766132_Danh_sach_he_thong_tai_khoan_.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774854827036_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774855177329_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774855627090_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774856588716_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774856687985_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774856941893_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774857025013_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774857131172_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774857229969_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774857336187_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774857390630_Screenshot 2026-03-30 at 14.56.10.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774857513075_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774857647213_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774857969567_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774862586918_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774864747165_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774864972850_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774865117644_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774866067848_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774866201405_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774866254535_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774866456672_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774866810215_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774867378266_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774868455018_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774931452097_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774931758139_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774931985122_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1774932056399_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1775016451308_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1775016755146_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1775017186875_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1775018681790_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/uploads/gl_1775018799898_So_chi_tiet_cac_tai_khoan.xlsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/webhooks/webhooks.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/webhooks/webhooks.controller.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/webhooks/webhooks.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/webhooks/webhooks.module.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tmp_reports/workload-2026-03.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/tmp_reports/workload-2026-03.xlsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -99,8 +26,15 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="233" />
+    <option name="cachedIndexableFilesCount" value="172" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
+  </component>
+  <component name="FormatOnSaveOptions">
+    <option name="myRunOnSave" value="false" />
+    <option name="myAllFileTypesSelected" value="true" />
+    <option name="mySelectedFileTypes">
+      <set />
+    </option>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -132,33 +66,33 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "JavaScript Debug.api.executor": "Debug",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "main",
-    "ignore.virus.scanning.warn.message": "true",
-    "javascript.preferred.runtime.type.id": "node",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/Users/cap2301/Twendee/BE_ACCOUNT",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "prettierjs.PrettierConfiguration.Package": "/Users/cap2301/Twendee/BE_ACCOUNT/node_modules/prettier",
-    "settings.editor.selected.configurable": "junie.allowlist",
-    "to.speed.mode.migration.done": "true",
-    "ts.external.directory.path": "/Users/cap2301/Twendee/BE_ACCOUNT/node_modules/typescript/lib",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;JavaScript Debug.api.executor&quot;: &quot;Debug&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;javascript.preferred.runtime.type.id&quot;: &quot;node&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/cap2301/Twendee/BE_ACCOUNT&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/cap2301/Twendee/BE_ACCOUNT/node_modules/prettier&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;/Users/cap2301/Twendee/BE_ACCOUNT/node_modules/typescript/lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager">
     <configuration name="api" type="JavascriptDebugType" temporary="true" nameIsGenerated="true" uri="http://localhost:3000/api">
       <method v="2" />
@@ -198,6 +132,8 @@
       <workItem from="1775009476575" duration="9938000" />
       <workItem from="1775025037450" duration="311000" />
       <workItem from="1775025355998" duration="8567000" />
+      <workItem from="1775057216745" duration="8180000" />
+      <workItem from="1775065433494" duration="63000" />
     </task>
     <servers />
   </component>

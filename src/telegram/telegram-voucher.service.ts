@@ -1,328 +1,254 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramNotiService } from '../common/services/telegram-noti.service';
+import { ErpClientService } from '../erp/erp-client.service';
 
 @Injectable()
 export class TelegramVoucherService {
   private readonly logger = new Logger(TelegramVoucherService.name);
 
-  // Sequential approval chain: Quỳnh → Linh → Long
-  private readonly APPROVAL_CHAIN = [
-    { email: 'quynh@company.com', telegramId: '5377791753', name: 'Chị Quỳnh', order: 0 },
-    { email: 'linh@company.com', telegramId: '5377791753', name: 'Chị Linh', order: 1 },
-    { email: 'long@company.com', telegramId: '5377791753', name: 'Anh Long', order: 2 },
+  public readonly APPROVAL_CHAIN = [
+    {
+      email: 'accountant@twendeesoft.com',
+      telegramId: '5377791753',
+      name: 'Như Quỳnh',
+      order: 0,
+    },
+    {
+      email: 'linhtt@twendeesoft.com',
+      telegramId: '5740135285',
+      name: 'Thùy Linh',
+      order: 1,
+    },
+    {
+      email: 'erik@twendeesoft.com',
+      telegramId: '5377791753',
+      name: 'Hoàng Long',
+      order: 2,
+    },
   ];
 
   constructor(
     private prisma: PrismaService,
     private telegramNotiService: TelegramNotiService,
+    @Inject(forwardRef(() => ErpClientService))
+    private erpClientService: ErpClientService,
   ) {}
 
+  async startApprovalProcess(voucher: any, createdBy: any, erpData: any) {
+    const first = this.APPROVAL_CHAIN[0];
+    const existing = await this.prisma.approval.findFirst({
+      where: { voucherId: voucher.id, approvedBy: first.email },
+    });
 
-  async sendVoucherToApprovalChain(voucher: any, createdBy: any) {
-    try {
-      this.logger.log(`📤 Sending voucher ${voucher.voucherNumber} to approval chain`);
+    if (existing) {
+      await this.prisma.approval.update({
+        where: { id: existing.id },
+        data: { status: 'pending', approvedAt: null },
+      });
+    } else {
+      await this.prisma.approval.create({
+        data: {
+          voucherId: voucher.id,
+          approvedBy: first.email,
+          status: 'pending',
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+    await this.sendApprovalMessage(
+      first.telegramId,
+      voucher,
+      createdBy,
+      first,
+      false,
+      '',
+      '',
+      erpData,
+    );
+  }
 
-      // Create approval records for all in chain
-      for (const approver of this.APPROVAL_CHAIN) {
-        const existing = await this.prisma.approval.findFirst({
-          where: {
-            voucherId: voucher.id,
-            approvedBy: approver.email,
+  async handleAcceptVoucher(voucherId: string, approverEmail: string) {
+    const voucher = await this.prisma.voucher.findUnique({
+      where: { id: voucherId },
+      include: { user: true },
+    });
+    if (!voucher?.erpId) throw new Error('Voucher thiếu erpId');
+
+    const currentApprover = this.APPROVAL_CHAIN.find(
+      (a) => a.email === approverEmail,
+    );
+
+    // Gọi ERP
+    await this.erpClientService.approveOnErp(voucher.erpId, approverEmail);
+
+    // Cập nhật Bot DB
+    await this.prisma.approval.updateMany({
+      where: { voucherId, approvedBy: approverEmail, status: 'pending' },
+      data: { status: 'approved', approvedAt: new Date() },
+    });
+
+    const nextApprover = this.APPROVAL_CHAIN.find(
+      (a) => a.order === (currentApprover?.order || 0) + 1,
+    );
+    if (nextApprover) {
+      const existNext = await this.prisma.approval.findFirst({
+        where: { voucherId, approvedBy: nextApprover.email },
+      });
+      if (!existNext) {
+        await this.prisma.approval.create({
+          data: {
+            voucherId,
+            approvedBy: nextApprover.email,
+            status: 'pending',
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           },
         });
-
-        if (!existing) {
-          await this.prisma.approval.create({
-            data: {
-              voucherId: voucher.id,
-              approvedBy: approver.email,
-              status: 'pending',
-              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            },
-          });
-        }
       }
-
-      // Send to first approver
-      const firstApprover = this.APPROVAL_CHAIN[0];
+      const metadata: any = voucher.metadata;
+      const erpData = metadata?.payload || {};
       await this.sendApprovalMessage(
-        firstApprover.telegramId,
+        nextApprover.telegramId,
         voucher,
-        createdBy,
-        firstApprover,
+        voucher.user,
+        nextApprover,
+        false,
+        '',
+        '',
+        erpData,
       );
-
-      this.logger.log(
-        `✅ Voucher sent to ${firstApprover.name} (${firstApprover.email})`,
-      );
-    } catch (error) {
-      this.logger.error('❌ Error sending to approval chain:', error.message);
+    } else {
+      await this.prisma.voucher.update({
+        where: { id: voucherId },
+        data: { status: 'approved' },
+      });
     }
   }
 
-  /**
-   * Format và gửi tin nhắn duyệt với button
-   */
-  private async sendApprovalMessage(
-    telegramId: string,
-    voucher: any,
-    createdBy: any,
-    approver: any,
+  async handleRejectVoucher(
+    voucherId: string,
+    approverEmail: string,
+    reason: string,
   ) {
+    const voucher = await this.prisma.voucher.findUnique({
+      where: { id: voucherId },
+      include: { user: true },
+    });
+    if (!voucher?.erpId) throw new Error('Voucher thiếu erpId');
+
+    const currentApprover = this.APPROVAL_CHAIN.find(
+      (a) => a.email === approverEmail,
+    );
+    const prevApprover = this.APPROVAL_CHAIN.find(
+      (a) => a.order === (currentApprover?.order || 0) - 1,
+    );
+
+    if (prevApprover) {
+      await this.erpClientService.rejectOnErp(
+        voucher.erpId,
+        approverEmail,
+        reason,
+      );
+      await this.prisma.approval.updateMany({
+        where: { voucherId, approvedBy: prevApprover.email },
+        data: { status: 'pending', approvedAt: null },
+      });
+      const metadata: any = voucher.metadata;
+      const erpData = metadata?.payload || {};
+      await this.sendApprovalMessage(
+        prevApprover.telegramId,
+        voucher,
+        voucher.user,
+        prevApprover,
+        true,
+        reason,
+        currentApprover?.name,
+        erpData,
+      );
+    } else {
+      await this.erpClientService.cancelOnErp(
+        voucher.erpId,
+        approverEmail,
+        reason,
+      );
+      await this.prisma.voucher.update({
+        where: { id: voucherId },
+        data: { status: 'rejected' },
+      });
+    }
+  }
+
+  private async sendApprovalMessage(
+    telId: string,
+    voucher: any,
+    creator: any,
+    approver: any,
+    isRe = false,
+    reason = '',
+    from = '',
+    erpData: any,
+  ) {
+    const items =
+      erpData.details
+        ?.map((item: any, i: number) => {
+          const amount = parseFloat(item.amount || 0).toLocaleString('vi-VN');
+          const price = parseFloat(item.unitPrice || 0).toLocaleString('vi-VN');
+          return `${i + 1}. ${item.description || item.content}\n   • Số lượng: ${item.quantity || 1}\n   • Đơn giá: ${price} ${erpData.currency || 'VND'}\n   • Thành tiền: ${amount} ${erpData.currency || 'VND'}`;
+        })
+        .join('\n') || 'Không có chi tiết';
+
     const message = `
-🎫 *Phiếu Chi Cần Duyệt - ${voucher.voucherNumber}*
-Bước ${approver.order + 1}/${this.APPROVAL_CHAIN.length}
+${isRe ? '🔄 <b>DUYỆT LẠI (TRẢ VỀ)</b>' : '🎫 <b>PHIẾU CHI CHUYÊN DÙNG</b>'} (Bước ${approver.order + 1}/3)
 
-👤 *Người lập:* ${createdBy?.fullName || 'Unknown'}
-📧 ${createdBy?.email}
+📌 <b>THÔNG TIN CƠ BẢN</b>
+Mã phiếu: <code>${erpData.voucherCode || erpData.code}</code>
+Loại phiếu: ${erpData.voucherType || 'PAYMENT'}
+Người lập: ${creator?.fullName || creator?.name || 'ERP System'}
+Email: ${creator?.email || 'N/A'}
 
-📝 *Nội dung:* ${voucher.reason}
-💰 *Số tiền:* ${parseFloat(voucher.amount?.toString() || '0').toLocaleString('vi-VN')} VND
+📅 <b>NGÀY THÁNG</b>
+Ngày phát hành: ${erpData.issueDate ? new Date(erpData.issueDate).toLocaleDateString('vi-VN') : 'N/A'}
+Ngày ghi sổ: ${erpData.postingDate ? new Date(erpData.postingDate).toLocaleDateString('vi-VN') : 'N/A'}
 
-📅 *Ngày:* ${new Date(voucher.createdAt).toLocaleDateString('vi-VN')}
+💰 <b>THÔNG TIN TIỀN TỆ</b>
+Nội dung chi: ${erpData.content || erpData.reason}
+Tổng tiền: <b>${parseFloat(erpData.totalAmount || 0).toLocaleString('vi-VN')} ${erpData.currency || 'VND'}</b>
+Loại tiền: ${erpData.currency || 'USD'}
+Tỷ giá: ${erpData.exchangeRate || '1.0'}
 
----
-⏳ Vui lòng kiểm tra và phê duyệt hoặc từ chối
-    `;
+🏦 <b>THÔNG TIN NGÂN HÀNG</b>
+Người nhận/Chi trả: ${erpData.payerReceiver || 'N/A'}
+Tài khoản: <code>${erpData.bankAccount || 'N/A'}</code>
+Ngân hàng: ${erpData.bankCode || 'N/A'}
+Tài khoản kế toán: <code>${erpData.accountId || 'N/A'}</code>
+
+📋 <b>CHI TIẾT HẠNG MỤC</b>
+${items}
+
+📎 <b>PHỤ LỤC</b>
+Ghi chú: ${erpData.note || 'Không có ghi chú'}
+Số tập tin đính kèm: ${erpData.attachments?.length || 0}
+${erpData.attachments?.length > 0 ? `🔗 <a href="${erpData.attachments[0]}">Xem chứng từ</a>` : ''}
+
+━━━━━━━━━━━━━━━━━━
+${isRe ? `⚠️ <b>Lý do trả về:</b> ${reason}\n👤 <b>Từ:</b> ${from}` : '✅ Vui lòng duyệt hoặc từ chối phiếu chi này'}`;
 
     const buttons = [
       [
         {
-          text: '✅ Duyệt',
+          text: isRe ? '🔄 Duyệt lại' : '✅ PHÊ DUYỆT',
           callback_data: `voucher_approve_${voucher.id}`,
         },
         {
-          text: '❌ Từ chối',
+          text: '❌ TRẢ VỀ/HỦY',
           callback_data: `voucher_reject_${voucher.id}`,
         },
       ],
-      [
-        {
-          text: '📋 Xem chi tiết',
-          url: `http://localhost:5173/accounting/vouchers/${voucher.id}`,
-        },
-      ],
     ];
-
     await this.telegramNotiService.sendMessageWithButtons(
-      telegramId,
+      telId,
       message,
       buttons,
     );
-  }
-
-  /**
-   * Duyệt phiếu - chuyển sang người tiếp theo
-   */
-  async approveVoucher(voucherId: string, approverEmail: string) {
-    try {
-      this.logger.log(`✅ Approving voucher ${voucherId} by ${approverEmail}`);
-
-      // Find approver in chain
-      const currentApprover = this.APPROVAL_CHAIN.find(
-        (a) => a.email === approverEmail,
-      );
-      if (!currentApprover) {
-        this.logger.error(`Approver not in chain: ${approverEmail}`);
-        return false;
-      }
-
-      // Update approval status
-      const approval = await this.prisma.approval.findFirst({
-        where: { voucherId, approvedBy: approverEmail },
-      });
-
-      if (!approval) {
-        this.logger.error(`Approval record not found`);
-        return false;
-      }
-
-      await this.prisma.approval.update({
-        where: { id: approval.id },
-        data: {
-          status: 'approved',
-          approvedAt: new Date(),
-        },
-      });
-
-      // Get voucher
-      const voucher = await this.prisma.voucher.findUnique({
-        where: { id: voucherId },
-      });
-
-      if (!voucher) {
-        this.logger.error(`Voucher not found: ${voucherId}`);
-        return false;
-      }
-
-      // Check if all approved
-      const allApprovals = await this.prisma.approval.findMany({
-        where: { voucherId },
-      });
-
-      const allApproved = allApprovals.every((a) => a.status === 'approved');
-
-      if (allApproved) {
-        // Hoàn tất - update voucher
-        await this.prisma.voucher.update({
-          where: { id: voucherId },
-          data: { status: 'approved' },
-        });
-
-        // Notify creator - phiếu đã được duyệt hoàn toàn
-        if (voucher.userId) {
-          const creator = await this.prisma.user.findUnique({
-            where: { id: voucher.userId },
-          });
-
-          if (creator?.telegramId) {
-            const msg = `
-✅ *Phiếu Chi Đã Được Duyệt Hoàn Toàn*
-
-🎫 ${voucher.voucherNumber}
-💰 ${parseFloat(voucher.amount?.toString() || '0').toLocaleString('vi-VN')} VND
-
-Phiếu chi của bạn đã được tất cả mọi người phê duyệt! ✨
-            `;
-            await this.telegramNotiService.sendMessage(creator.telegramId, msg);
-          }
-        }
-
-        this.logger.log(`🎉 Voucher fully approved: ${voucherId}`);
-      } else {
-        // Send to next approver
-        const nextApprover = this.APPROVAL_CHAIN[currentApprover.order + 1];
-        if (nextApprover) {
-          const createdBy = voucher.userId
-            ? await this.prisma.user.findUnique({
-                where: { id: voucher.userId },
-              })
-            : null;
-
-          await this.sendApprovalMessage(
-            nextApprover.telegramId,
-            voucher,
-            createdBy
-              ? {
-                  userId: createdBy.id,
-                  email: createdBy.email,
-                  fullName: createdBy.name,
-                }
-              : {},
-            nextApprover,
-          );
-
-          // Notify current approver
-          const notifyMsg = `✅ Bạn đã duyệt phiếu ${voucher.voucherNumber}.\n\n⏳ Chờ ${nextApprover.name} duyệt...`;
-          await this.telegramNotiService.sendMessage(
-            currentApprover.telegramId,
-            notifyMsg,
-          );
-
-          this.logger.log(
-            `📤 Voucher sent to ${nextApprover.name} (step ${nextApprover.order + 1})`,
-          );
-        }
-      }
-
-      return true;
-    } catch (error) {
-      this.logger.error('❌ Approval error:', error.message);
-      return false;
-    }
-  }
-
-  /**
-   * Từ chối phiếu - quay lại chỉnh sửa
-   */
-  async rejectVoucher(
-    voucherId: string,
-    approverEmail: string,
-    reason?: string,
-  ) {
-    try {
-      this.logger.log(`❌ Rejecting voucher ${voucherId} by ${approverEmail}`);
-
-      // Find approver in chain
-      const currentApprover = this.APPROVAL_CHAIN.find(
-        (a) => a.email === approverEmail,
-      );
-      if (!currentApprover) {
-        this.logger.error(`Approver not in chain: ${approverEmail}`);
-        return false;
-      }
-
-      // Update approval status
-      const approval = await this.prisma.approval.findFirst({
-        where: { voucherId, approvedBy: approverEmail },
-      });
-
-      if (!approval) {
-        this.logger.error(`Approval record not found`);
-        return false;
-      }
-
-      await this.prisma.approval.update({
-        where: { id: approval.id },
-        data: {
-          status: 'rejected',
-          rejectionReason: reason || 'Không có lý do',
-        },
-      });
-
-      // Reset voucher to PROCESSING
-      const voucher = await this.prisma.voucher.findUnique({
-        where: { id: voucherId },
-      });
-
-      if (!voucher) {
-        this.logger.error(`Voucher not found: ${voucherId}`);
-        return false;
-      }
-
-      await this.prisma.voucher.update({
-        where: { id: voucherId },
-        data: { status: 'processing' },
-      });
-
-      // Notify creator
-      if (voucher.userId) {
-        const creator = await this.prisma.user.findUnique({
-          where: { id: voucher.userId },
-        });
-
-        if (creator?.telegramId) {
-          const msg = `
-⚠️ *Phiếu Chi Bị Từ Chối*
-
-🎫 ${voucher.voucherNumber}
-💰 ${parseFloat(voucher.amount?.toString() || '0').toLocaleString('vi-VN')} VND
-👤 Người từ chối: ${currentApprover.name} (${approverEmail})
-
-📝 *Lý do:* ${reason || 'Không có lý do'}
-
-Vui lòng sửa và gửi lại phiếu chi.
-          `;
-          await this.telegramNotiService.sendMessage(creator.telegramId, msg);
-        }
-      }
-
-      // Notify all previous approvers
-      for (let i = 0; i < currentApprover.order; i++) {
-        const prevApprover = this.APPROVAL_CHAIN[i];
-        const notifyMsg = `⚠️ Phiếu ${voucher.voucherNumber} bị từ chối bởi ${currentApprover.name}\n\nLý do: ${reason || 'Không có lý do'}`;
-        await this.telegramNotiService.sendMessage(
-          prevApprover.telegramId,
-          notifyMsg,
-        );
-      }
-
-      this.logger.log(`Voucher rejected and reset for resubmission`);
-      return true;
-    } catch (error) {
-      this.logger.error('❌ Rejection error:', error.message);
-      return false;
-    }
   }
 }

@@ -26,7 +26,7 @@ export class MonthlyScheduler {
    * 2. Generate + export Excel
    * 3. Gửi Telegram
    */
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_HOUR)
   async generateMonthlyParticipationReport() {
     const now = new Date();
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
