@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { ParticipationReportService } from '../reports/participation.service';
 import { ExcelExportService } from '../reports/excel-export.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { DataSyncService } from '../sync/data-sync.service';
+import { WorkloadAnalysisService } from '../workload/workload-analysis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as fs from 'fs';
@@ -18,6 +19,7 @@ export class MonthlyScheduler {
     private readonly excel: ExcelExportService,
     private readonly telegram: TelegramService,
     private readonly sync: DataSyncService,
+    private readonly workloadAnalysis: WorkloadAnalysisService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -176,7 +178,8 @@ export class MonthlyScheduler {
   }
 
   /**
-   * Cảnh báo giữa tháng (Ngày 20 hàng tháng)
+   * Cảnh báo + AI insights giữa tháng (Ngày 20 hàng tháng, 9h sáng)
+   * Playbook: sync → detect at-risk → AI team insights → notify HR
    */
   @Cron('0 9 20 * *', { timeZone: 'Asia/Ho_Chi_Minh' })
   async checkMidMonthRisks() {
@@ -184,32 +187,79 @@ export class MonthlyScheduler {
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
 
-    try {
-      await this.sync.syncMonthlyWorkloadReport(year, month);
-      const risks = await this.participation.getAtRiskEmployees(
-        year,
-        month,
-        30,
-      );
+    this.logger.log(`[Scheduler] Bắt đầu kiểm tra giữa tháng ${month}/${year}`);
 
-      // Lưu vào DB để Agent biết tình hình giữa tháng
+    try {
+      // Step 1: Sync dữ liệu mới nhất
+      await this.sync.syncMonthlyWorkloadReport(year, month);
+
+      // Step 2: Lấy danh sách at-risk
+      const risks = await this.participation.getAtRiskEmployees(year, month, 30);
+
+      // Lưu vào DB để Agent có thể trả lời câu hỏi về giữa tháng
       await this.saveReportToDatabase(year, month, risks, 'MID_MONTH');
 
-      if (risks.length === 0) return;
+      if (risks.length === 0) {
+        this.logger.log(`[Scheduler] Giữa tháng ${month}/${year}: Không có nhân sự nào at-risk`);
+        return;
+      }
+
+      const exceeded = risks.filter((r) => r.selfLearningHours > 30);
+      const approaching = risks.filter((r) => r.selfLearningHours <= 30);
+
+      // Xây dựng danh sách cảnh báo
+      let alertBlock = '';
+      if (exceeded.length > 0) {
+        alertBlock += `🔴 <b>Đã vượt ngưỡng (${exceeded.length} người):</b>\n`;
+        exceeded.forEach((r) => {
+          alertBlock += `• ${r.employeeName}: ${r.selfLearningHours.toFixed(1)}h\n`;
+        });
+      }
+      if (approaching.length > 0) {
+        alertBlock += `\n🟡 <b>Tiệm cận ngưỡng (${approaching.length} người):</b>\n`;
+        approaching.slice(0, 5).forEach((r) => {
+          alertBlock += `• ${r.employeeName}: ${r.selfLearningHours.toFixed(1)}h\n`;
+        });
+        if (approaching.length > 5) alertBlock += `  ...và ${approaching.length - 5} người khác\n`;
+      }
+
+      // Step 3: AI team insights
+      let aiInsights = '';
+      try {
+        aiInsights = await this.workloadAnalysis.generateTeamInsights(year, month);
+        // Lấy phần sau header "AI Insights — Team X/Y\n\n"
+        const insightBody = aiInsights.replace(/^AI Insights — Team \d+\/\d+\n\n/, '').trim();
+        aiInsights = `\n\n💡 <b>AI Nhận xét:</b>\n${insightBody}`;
+      } catch {
+        // Không có insights thì vẫn gửi cảnh báo
+      }
 
       const message =
         `⚠️ <b>CẢNH BÁO GIỮA THÁNG ${month}/${year}</b>\n\n` +
-        `Hiện có <b>${risks.length}</b> nhân sự có nguy cơ hoặc đã vượt ngưỡng 30h.\n` +
-        `📌 <i>Agent AI đã được cập nhật dữ liệu này để phản hồi truy vấn.</i>`;
+        `Tổng at-risk: <b>${risks.length}</b> nhân sự\n\n` +
+        alertBlock +
+        aiInsights +
+        `\n\n📌 <i>Nhắn "phân tích [tên]" trên Telegram để xem nguyên nhân chi tiết.</i>`;
 
       const hrChatId = process.env.HR_TELEGRAM_CHAT_ID;
       if (hrChatId) {
-        await this.telegram
-          .getBot()
-          .sendMessage(hrChatId, message, { parse_mode: 'HTML' });
+        const bot = this.telegram.getBot();
+        // Chia nhỏ nếu message dài
+        if (message.length > 4096) {
+          await bot.sendMessage(hrChatId,
+            `⚠️ <b>CẢNH BÁO GIỮA THÁNG ${month}/${year}</b>\n\nTổng at-risk: <b>${risks.length}</b>\n\n${alertBlock}`,
+            { parse_mode: 'HTML' });
+          if (aiInsights) {
+            await bot.sendMessage(hrChatId, `💡 <b>AI Nhận xét tháng ${month}/${year}:</b>\n\n${aiInsights.replace(/\n\n💡 <b>AI Nhận xét:<\/b>\n/, '')}`, { parse_mode: 'HTML' });
+          }
+        } else {
+          await bot.sendMessage(hrChatId, message, { parse_mode: 'HTML' });
+        }
       }
+
+      this.logger.log(`[Scheduler] Đã gửi cảnh báo giữa tháng ${month}/${year}: ${risks.length} at-risk`);
     } catch (error: any) {
-      this.logger.error(`❌ Mid-month check failed: ${error.message}`);
+      this.logger.error(`[Scheduler] Mid-month check failed: ${error.message}`);
     }
   }
 }

@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
+import { LLMGatewayModule } from '../llm-gateway/llm-gateway.module';
 import { FinancialPeriodService } from './period.service';
 import { JournalEntryService } from './journal-entry.service';
 import { FinancialReportService } from './report.service';
 import { CashflowExportService } from './cashflow-export.service';
+import { CashflowAgentService } from './cashflow-agent.service';
 import { GLFileParserService } from './gl-file-parser.service';
 import { GLFileProcessorService } from './gl-file-processor.service';
 import { CashflowTemplateService } from './cashflow-template.service';
@@ -13,12 +15,13 @@ import { ExportController } from './export.controller';
 import { FileUploadController } from './file-upload.controller';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, LLMGatewayModule],
   providers: [
     FinancialPeriodService,
     JournalEntryService,
     FinancialReportService,
     CashflowExportService,
+    CashflowAgentService,
     GLFileParserService,
     GLFileProcessorService,
     CashflowTemplateService,
@@ -30,6 +33,7 @@ import { FileUploadController } from './file-upload.controller';
     JournalEntryService,
     FinancialReportService,
     CashflowExportService,
+    CashflowAgentService,
     GLFileParserService,
     GLFileProcessorService,
     CashflowTemplateService,

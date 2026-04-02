@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, Query, HttpCode } from '@nestjs/com
 import { FinancialPeriodService } from './period.service';
 import { JournalEntryService } from './journal-entry.service';
 import { FinancialReportService } from './report.service';
+import { CashflowAgentService } from './cashflow-agent.service';
 
 @Controller('api/financial')
 export class FinancialController {
@@ -9,6 +10,7 @@ export class FinancialController {
     private periodService: FinancialPeriodService,
     private journalService: JournalEntryService,
     private reportService: FinancialReportService,
+    private cashflowAgent: CashflowAgentService,
   ) {}
 
   // ============ PERIOD ENDPOINTS ============
@@ -162,6 +164,36 @@ export class FinancialController {
   @Post('reports/:id/publish')
   async publishReport(@Param('id') reportId: string) {
     return this.reportService.publishReport(reportId);
+  }
+
+  // ============ CASHFLOW E2E ENDPOINTS ============
+
+  @Post('cashflow/auto-generate')
+  async autoGenerateCashflow(
+    @Body() data: { sourceFilePath?: string },
+  ) {
+    const generated = await this.cashflowAgent.generateAutoReport(data?.sourceFilePath);
+    return {
+      success: true,
+      message: `Đã tạo báo cáo cashflow tự động kỳ ${generated.period}`,
+      data: generated,
+    };
+  }
+
+  @Post('cashflow/qa')
+  async cashflowQa(
+    @Body() data: { question: string; year?: number; month?: number },
+  ) {
+    const answer = await this.cashflowAgent.answerQuestion(
+      data.question,
+      data.year,
+      data.month,
+    );
+
+    return {
+      success: true,
+      answer,
+    };
   }
 
   // ============ HEALTH CHECK ============

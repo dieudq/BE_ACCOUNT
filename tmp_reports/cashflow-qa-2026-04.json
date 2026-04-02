@@ -1,0 +1,57 @@
+{
+  "period": "2026-04",
+  "sourceFilePath": "/root/project/BE_ACCOUNT/uploads/gl_1775124170317_cashflow_2026-01.xlsx",
+  "reportFilePath": "/root/project/BE_ACCOUNT/exports/cashflow_.xlsx",
+  "generatedAt": "2026-04-02T10:02:52.296Z",
+  "rows": [
+    {
+      "row": 3,
+      "label": "ĐẦU KỲ",
+      "values": [
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000
+      ]
+    },
+    {
+      "row": 13,
+      "label": "Thu từ khấu trừ thuế CTV",
+      "values": [
+        0
+      ]
+    },
+    {
+      "row": 14,
+      "label": "Lãi/lỗ TG",
+      "values": [
+        0
+      ]
+    },
+    {
+      "row": 66,
+      "label": "CUỒI KỲ",
+      "values": [
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000
+      ]
+    }
+  ]
+}

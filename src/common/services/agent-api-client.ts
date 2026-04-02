@@ -23,8 +23,16 @@ class AccountingBotAPIClient {
   async getPendingVouchers() {
     try {
       const res = await this.client.get('/api/approvals/pending');
-      const approvals = res.data || [];
-      
+      // Normalize: API có thể trả array hoặc {data: [...]} hoặc {approvals: [...]}
+      const raw = res.data;
+      const approvals: any[] = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+          ? raw.data
+          : Array.isArray(raw?.approvals)
+            ? raw.approvals
+            : [];
+
       if (approvals.length === 0) {
         return {
           count: 0,

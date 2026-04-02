@@ -1,7 +1,7 @@
 import { Controller, Post, Body, Logger } from '@nestjs/common';
 import { TelegramService } from './telegram.service';
 import { TelegramGroupService } from './telegram-group.service';
-import { GLFileProcessorService } from '../financial/gl-file-processor.service';
+import { CashflowAgentService } from '../financial/cashflow-agent.service';
 import { BotCommandsService } from './bot-commands.service';
 import { TelegramVoucherService } from './telegram-voucher.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -16,7 +16,7 @@ export class TelegramController {
   constructor(
     private telegram: TelegramService,
     private telegramGroup: TelegramGroupService,
-    private glProcessor: GLFileProcessorService,
+    private cashflowAgent: CashflowAgentService,
     private telegramVoucherService: TelegramVoucherService,
     private botCommands: BotCommandsService,
     private prisma: PrismaService,
@@ -188,21 +188,21 @@ export class TelegramController {
       const filepath = path.join(uploadDir, filename);
       fs.writeFileSync(filepath, response.data);
 
-      const coaPath = path.join(
-        process.cwd(),
-        'templates/Danh_sach_he_thong_tai_khoan.xlsx',
-      );
-      const cashflowPath =
-        await this.glProcessor.processGLFileAndGenerateCashflow(
-          filepath,
-          coaPath,
-        );
-
-      const fileStream = fs.createReadStream(cashflowPath);
+      const generated = await this.cashflowAgent.generateAutoReport(filepath);
+      const fileStream = fs.createReadStream(generated.outputFilePath);
       await bot.sendDocument(chatId, fileStream, {
-        caption: '📊 Cashflow Report Generated',
+        caption: `📊 Cashflow Report Generated (${generated.period})`,
         parse_mode: 'HTML',
       });
+
+      await bot.sendMessage(
+        chatId,
+        `✅ Đã tạo báo cáo tự động thành công.\n` +
+          `• Kỳ: ${generated.period}\n` +
+          `• Nguồn: ${path.basename(generated.sourceFilePath)}\n\n` +
+          `Bạn có thể hỏi tiếp:\n` +
+          `"Tổng thu/chi cashflow kỳ ${generated.period} là bao nhiêu?"`,
+      );
     } catch (err) {
       const bot = this.telegram.getBot();
       await bot.sendMessage(chatId, `❌ Error processing file: ${err.message}`);

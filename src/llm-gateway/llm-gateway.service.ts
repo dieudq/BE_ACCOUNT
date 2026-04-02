@@ -4,7 +4,7 @@ import axios, { AxiosError } from 'axios';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 interface ModelConfig {
-  provider: 'groq' | 'deepseek' | 'anthropic' | 'gemini';
+  provider: 'groq' | 'deepseek' | 'anthropic' | 'gemini' | 'openai';
   model: string;
   apiKey: string;
   maxTokens: number;
@@ -32,7 +32,7 @@ export class LLMGatewayService {
   }
 
   private initializeModels() {
-    // Fallback 3: Gemini (Google)
+    // Fallback 4: Gemini (Google)
     this.fallbackConfigs.push({
       provider: 'gemini',
       model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
@@ -44,13 +44,22 @@ export class LLMGatewayService {
     // Primary: Groq (fast)
     this.primaryConfig = {
       provider: 'groq',
-      model: 'llama-3.3-70b-versatile',
+      model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
       apiKey: process.env.GROQ_API_KEY || '',
-      maxTokens: 1024,
-      temperature: 0.7,
+      maxTokens: 2048,
+      temperature: 0.3,
     };
 
-    // Fallback 1: DeepSeek (cost-effective)
+    // Fallback 1: OpenAI
+    this.fallbackConfigs.push({
+      provider: 'openai',
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      apiKey: process.env.OPENAI_API_KEY || '',
+      maxTokens: 2048,
+      temperature: 0.3,
+    });
+
+    // Fallback 2: DeepSeek (cost-effective)
     this.fallbackConfigs.push({
       provider: 'deepseek',
       model: 'deepseek-chat',
@@ -59,12 +68,12 @@ export class LLMGatewayService {
       temperature: 0.7,
     });
 
-    // Fallback 2: Anthropic (high quality)
+    // Fallback 3: Anthropic (high quality)
     this.fallbackConfigs.push({
       provider: 'anthropic',
-      model: 'claude-3-sonnet-20240229',
+      model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
       apiKey: process.env.ANTHROPIC_API_KEY || '',
-      maxTokens: 1024,
+      maxTokens: 2048,
       temperature: 0.7,
     });
   }
@@ -152,6 +161,8 @@ export class LLMGatewayService {
 
       if (config.provider === 'groq') {
         response = await this.callGroq(config, prompt, systemPrompt);
+      } else if (config.provider === 'openai') {
+        response = await this.callOpenAI(config, prompt, systemPrompt);
       } else if (config.provider === 'deepseek') {
         response = await this.callDeepSeek(config, prompt, systemPrompt);
       } else if (config.provider === 'anthropic') {
@@ -174,6 +185,45 @@ export class LLMGatewayService {
     } catch (error) {
       return this.handleProviderError(providerId, error as AxiosError);
     }
+  }
+
+  /**
+   * OpenAI API call
+   */
+  private async callOpenAI(
+    config: ModelConfig,
+    prompt: string,
+    systemPrompt?: string,
+  ): Promise<string> {
+    const response = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: config.model,
+        messages: [
+          {
+            role: 'system',
+            content:
+              systemPrompt ||
+              'You are a helpful assistant. Always respond with plain text, NO markdown.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 30000,
+      },
+    );
+
+    return response.data?.choices?.[0]?.message?.content || '';
   }
 
   /**
