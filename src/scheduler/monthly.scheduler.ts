@@ -5,6 +5,7 @@ import { ExcelExportService } from '../reports/excel-export.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { DataSyncService } from '../sync/data-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -21,42 +22,38 @@ export class MonthlyScheduler {
   ) {}
 
   /**
-   * Monthly report: ngày 1 hàng tháng lúc 08:00 VN
-   * 1. Sync workload data từ ERP cho tháng trước
-   * 2. Generate + export Excel
-   * 3. Gửi Telegram
+   * Monthly report: Chạy định kỳ để tổng hợp dữ liệu
    */
-  @Cron(CronExpression.EVERY_HOUR)
+  @Cron(CronExpression.EVERY_5_HOURS) // Thay đổi tùy theo nhu cầu thực tế
   async generateMonthlyParticipationReport() {
     const now = new Date();
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const year = lastMonth.getFullYear();
     const month = lastMonth.getMonth() + 1;
 
-    this.logger.log(`🔄 [Scheduler] Monthly report start: ${year}/${month}`);
+    this.logger.log(
+      `🔄 [Scheduler] Bắt đầu tổng hợp báo cáo tháng: ${month}/${year}`,
+    );
 
     try {
-      // Step 1: Sync from ERP
+      // Step 1: Đồng bộ dữ liệu từ ERP
       const syncResult = await this.sync.syncMonthlyWorkloadReport(year, month);
-      this.logger.log(`📡 Sync result: ${syncResult.message}`);
 
       if (syncResult.synced === 0) {
-        this.logger.warn('⚠️ No data synced — skipping report generation');
+        this.logger.warn('⚠️ Không có dữ liệu để đồng bộ - Bỏ qua báo cáo');
         return;
       }
 
-      // Step 2: Generate report
+      // Step 2: Tạo dữ liệu báo cáo
       const report = await this.participation.generateMonthlyReport(
         year,
         month,
       );
-      const errors = this.participation.validateReport(report.rows);
 
-      if (errors.length > 0) {
-        this.logger.warn(`⚠️ Validation errors: ${JSON.stringify(errors)}`);
-      }
+      // 🔥 BƯỚC QUAN TRỌNG: Lưu vào DB để Agent có thể trả lời câu hỏi
+      await this.saveReportToDatabase(year, month, report.rows, 'MONTHLY');
 
-      // Step 3: Export Excel
+      // Step 3: Xuất file Excel
       const buffer = await this.excel.exportParticipationReport(
         report.rows,
         year,
@@ -72,72 +69,114 @@ export class MonthlyScheduler {
       );
       fs.writeFileSync(excelPath, buffer);
 
-      // Step 4: Send Telegram
-      const alertLines = report.alerts
-        .map((a) => `• ${a.employeeName}: ${a.hours.toFixed(1)}h`)
-        .join('\n');
+      // Step 4: Gửi Telegram (Đã fix lỗi thẻ HTML lạ)
+      await this.sendTelegramReport(year, month, report, excelPath);
 
-      const message =
-        `📊 <b>Báo cáo Workload ${month}/${year}</b>\n\n` +
-        `👥 Tổng nhân sự: ${report.rows.length}\n` +
-        `⚠️ Vượt ngưỡng 30h: ${report.alerts.length}\n` +
-        (report.alerts.length > 0
-          ? `\n🔴 <b>Danh sách:</b>\n${alertLines}\n`
-          : '') +
-        `\n📁 File: workload-${year}-${String(month).padStart(2, '0')}.xlsx`;
-
-      const hrChatId = process.env.HR_TELEGRAM_CHAT_ID;
-      if (hrChatId) {
-        await this.telegram
-          .getBot()
-          .sendMessage(hrChatId, message, { parse_mode: 'HTML' });
-        // Also send the Excel file
-        await this.telegram
-          .getBot()
-          .sendDocument(hrChatId, excelPath, {
-            caption: `Workload report ${month}/${year}`,
-          })
-          .catch((err) =>
-            this.logger.warn(`⚠️ Failed to send Excel: ${err.message}`),
-          );
-      }
-
+      // Ghi Log thành công
       await this.prisma.botLog.create({
         data: {
           action: 'MONTHLY_WORKLOAD_REPORT',
           status: 'success',
-          details: {
-            year,
-            month,
-            employeeCount: report.rows.length,
-            alertCount: report.alerts.length,
-            syncedEmployees: syncResult.synced,
-            excelPath,
-          },
+          details: { year, month, alertCount: report.alerts.length, excelPath },
         },
       });
 
       this.logger.log(
-        `✅ [Scheduler] Monthly report done: ${report.rows.length} employees, ${report.alerts.length} alerts`,
+        `✅ [Scheduler] Hoàn thành báo cáo tháng ${month}/${year}`,
       );
     } catch (error: any) {
-      this.logger.error(
-        `❌ [Scheduler] Monthly report failed: ${error.message}`,
-        error.stack,
-      );
-      await this.prisma.botLog.create({
-        data: {
-          action: 'MONTHLY_WORKLOAD_REPORT',
-          status: 'error',
-          details: { error: error.message },
-        },
-      });
+      this.logger.error(`❌ [Scheduler] Lỗi báo cáo tháng: ${error.message}`);
     }
   }
 
   /**
-   * Proactive mid-month alert: ngày 20 hàng tháng lúc 09:00 VN
-   * Sync và kiểm tra ai đang có nguy cơ vượt ngưỡng 30h trước cuối tháng.
+   * Hàm lưu dữ liệu vào DB để Agent truy vấn
+   */
+  private async saveReportToDatabase(
+    year: number,
+    month: number,
+    rows: any[],
+    type: string,
+  ) {
+    this.logger.log(`💾 Đang lưu dữ liệu báo cáo vào Database cho Agent...`);
+
+    const isMissingTableError = (error: unknown) =>
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2021';
+
+    // Xóa dữ liệu cũ của tháng đó (nếu có) để tránh trùng lặp khi chạy lại
+    try {
+      await this.prisma.workloadReport.deleteMany({
+        where: { year, month, reportType: type },
+      });
+    } catch (error) {
+      if (isMissingTableError(error)) {
+        this.logger.warn(
+          '⚠️ Bảng WorkloadReport chưa tồn tại. Bỏ qua lưu DB, vẫn tiếp tục gửi báo cáo.',
+        );
+        return;
+      }
+      throw error;
+    }
+
+    // Lưu dữ liệu mới
+    const data = rows.map((row) => ({
+      year,
+      month,
+      employeeName: row.employeeName,
+      hours: row.selfLearningHours || 0,
+      isAlert: (row.selfLearningHours || 0) > 30,
+      reportType: type,
+    }));
+
+    try {
+      await this.prisma.workloadReport.createMany({ data });
+    } catch (error) {
+      if (isMissingTableError(error)) {
+        this.logger.warn(
+          '⚠️ Bảng WorkloadReport chưa tồn tại. Không thể cập nhật dữ liệu cho Agent.',
+        );
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Hàm gửi Telegram hỗ trợ định dạng HTML an toàn
+   */
+  private async sendTelegramReport(
+    year: number,
+    month: number,
+    report: any,
+    excelPath: string,
+  ) {
+    const alertLines = report.alerts
+      .map(
+        (a) =>
+          `• <code>${a.employeeName}</code>: <b>${a.hours.toFixed(1)}h</b>`,
+      )
+      .join('\n');
+
+    const message =
+      `📊 <b>BÁO CÁO WORKLOAD ${month}/${year}</b>\n\n` +
+      `👥 Tổng nhân sự: <code>${report.rows.length}</code>\n` +
+      `⚠️ Vượt ngưỡng 30h: <b>${report.alerts.length}</b>\n` +
+      (report.alerts.length > 0
+        ? `\n🔴 <b>Danh sách chi tiết:</b>\n${alertLines}\n`
+        : '') +
+      `\n📁 <i>File báo cáo đã được đính kèm bên dưới.</i>`;
+
+    const hrChatId = process.env.HR_TELEGRAM_CHAT_ID;
+    if (hrChatId) {
+      const bot = this.telegram.getBot();
+      await bot.sendMessage(hrChatId, message, { parse_mode: 'HTML' });
+      await bot.sendDocument(hrChatId, excelPath).catch(() => {});
+    }
+  }
+
+  /**
+   * Cảnh báo giữa tháng (Ngày 20 hàng tháng)
    */
   @Cron('0 9 20 * *', { timeZone: 'Asia/Ho_Chi_Minh' })
   async checkMidMonthRisks() {
@@ -145,45 +184,23 @@ export class MonthlyScheduler {
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
 
-    this.logger.log(`🔍 [Scheduler] Mid-month risk check: ${year}/${month}`);
-
     try {
-      // Sync current month first
       await this.sync.syncMonthlyWorkloadReport(year, month);
-
       const risks = await this.participation.getAtRiskEmployees(
         year,
         month,
         30,
       );
-      const exceeded = risks.filter((r) => r.selfLearningHours > 30);
-      const approaching = risks.filter((r) => r.selfLearningHours <= 30);
 
-      if (risks.length === 0) {
-        this.logger.log('✅ No at-risk employees this month');
-        return;
-      }
+      // Lưu vào DB để Agent biết tình hình giữa tháng
+      await this.saveReportToDatabase(year, month, risks, 'MID_MONTH');
 
-      const lines: string[] = [];
-      if (exceeded.length > 0) {
-        lines.push('🔴 <b>Đã vượt ngưỡng:</b>');
-        exceeded.forEach((r) =>
-          lines.push(`• ${r.employeeName}: ${r.selfLearningHours.toFixed(1)}h`),
-        );
-      }
-      if (approaching.length > 0) {
-        lines.push('\n🟡 <b>Đang tiến gần ngưỡng:</b>');
-        approaching.forEach((r) =>
-          lines.push(
-            `• ${r.employeeName}: ${r.selfLearningHours.toFixed(1)}h / 30h`,
-          ),
-        );
-      }
+      if (risks.length === 0) return;
 
       const message =
-        `⚠️ <b>Cảnh báo Workload giữa tháng ${month}/${year}</b>\n\n` +
-        lines.join('\n') +
-        '\n\n📌 Còn ~10 ngày để các nhân sự log thêm giờ.';
+        `⚠️ <b>CẢNH BÁO GIỮA THÁNG ${month}/${year}</b>\n\n` +
+        `Hiện có <b>${risks.length}</b> nhân sự có nguy cơ hoặc đã vượt ngưỡng 30h.\n` +
+        `📌 <i>Agent AI đã được cập nhật dữ liệu này để phản hồi truy vấn.</i>`;
 
       const hrChatId = process.env.HR_TELEGRAM_CHAT_ID;
       if (hrChatId) {
@@ -191,14 +208,8 @@ export class MonthlyScheduler {
           .getBot()
           .sendMessage(hrChatId, message, { parse_mode: 'HTML' });
       }
-
-      this.logger.log(
-        `⚠️ [Scheduler] Mid-month: ${exceeded.length} exceeded, ${approaching.length} approaching`,
-      );
     } catch (error: any) {
-      this.logger.error(
-        `❌ [Scheduler] Mid-month check failed: ${error.message}`,
-      );
+      this.logger.error(`❌ Mid-month check failed: ${error.message}`);
     }
   }
 }

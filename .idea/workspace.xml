@@ -5,25 +5,32 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="4a985f80-bf31-42dd-9e1d-6395c794e084" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/src/erp/erp-client.service.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/read-cashflow.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/prisma/schema.prisma" beforeDir="false" afterPath="$PROJECT_DIR$/prisma/schema.prisma" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/common/services/telegram-noti.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/common/services/telegram-noti.service.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/erp/erp.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/erp/erp.module.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/scheduler/monthly.scheduler.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/scheduler/monthly.scheduler.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/telegram/telegram-voucher.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/telegram-voucher.service.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/telegram/telegram.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/telegram.controller.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/telegram/telegram.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/telegram.module.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/webhooks/webhooks.controller.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/webhooks/webhooks.controller.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/webhooks/webhooks.module.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/webhooks/webhooks.module.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/telegram/groq.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/groq.service.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/telegram/telegram.service.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/telegram/telegram.service.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tmp_reports/workload-2026-03.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/tmp_reports/workload-2026-03.xlsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="CopilotPersistence">
+    <persistenceIdMap>
+      <entry key="_/Users/cap2301/Twendee/BE_ACCOUNT" value="3BWbRYaIulp6B9A0rKvSRfsacle" />
+    </persistenceIdMap>
+  </component>
+  <component name="CopilotUserSelectedChatMode">
+    <option name="chatModeId" value="Agent" />
+  </component>
+  <component name="CopilotUserSelectedModel">
+    <selectedModels>
+      <entry key="chat-panel" value="Claude Haiku 4.5" />
+      <entry key="agent-panel" value="Claude Haiku 4.5" />
+    </selectedModels>
   </component>
   <component name="EmbeddingIndexingInfo">
     <option name="cachedIndexableFilesCount" value="172" />
@@ -133,7 +140,9 @@
       <workItem from="1775025037450" duration="311000" />
       <workItem from="1775025355998" duration="8567000" />
       <workItem from="1775057216745" duration="8180000" />
-      <workItem from="1775065433494" duration="63000" />
+      <workItem from="1775065433494" duration="1258000" />
+      <workItem from="1775066707646" duration="3000" />
+      <workItem from="1775066746801" duration="3481000" />
     </task>
     <servers />
   </component>
@@ -150,5 +159,13 @@
         </entry>
       </map>
     </option>
+  </component>
+  <component name="github-copilot-workspace">
+    <instructionFileLocations>
+      <option value=".github/instructions" />
+    </instructionFileLocations>
+    <promptFileLocations>
+      <option value=".github/prompts" />
+    </promptFileLocations>
   </component>
 </project>

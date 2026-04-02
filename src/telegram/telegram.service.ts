@@ -172,23 +172,28 @@ export class TelegramService implements OnModuleInit {
         return;
       }
 
-      // === LLM (GROQ) HANDLING for natural language ===
-      if (!message.startsWith('/')) {
-        // Show "typing" status
-        await this.bot.sendChatAction(chatId, 'typing');
+       // === LLM (GROQ) HANDLING for natural language ===
+       if (!message.startsWith('/')) {
+         // Show "typing" status
+         await this.bot.sendChatAction(chatId, 'typing');
 
-        const response = await this.groqService.chat(message, userIdForQuery);
+         const response = await this.groqService.chat(message, userIdForQuery);
 
-        try {
-          // Try sending with Markdown
-          await this.bot.sendMessage(chatId, response, { parse_mode: 'Markdown' });
-        } catch (error) {
-          // If Markdown fails (bad entities), fallback to Plain Text
-          console.warn('❌ Telegram Markdown error:', error.message);
-          await this.bot.sendMessage(chatId, response);
-        }
-        return;
-      }
+         try {
+           // Try sending with plain text first (safer)
+           await this.bot.sendMessage(chatId, response);
+         } catch (error) {
+           // If still fails, try HTML mode
+           console.warn('❌ Telegram message error:', error.message);
+           try {
+             await this.bot.sendMessage(chatId, response, { parse_mode: 'HTML' });
+           } catch (htmlError) {
+             // Final fallback: just send the text without any formatting
+             await this.bot.sendMessage(chatId, response.substring(0, 4000));
+           }
+         }
+         return;
+       }
 
       if (message.startsWith('YES ')) {
         const confirmationId = message.substring(4).trim();

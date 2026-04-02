@@ -442,3 +442,15 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model WorkloadReport {
+  id             String   @id @default(cuid())
+  year           Int
+  month          Int
+  employeeName   String
+  hours          Float
+  isAlert        Boolean  @default(false)
+  reportType     String   // "MONTHLY" hoặc "MID_MONTH"
+  createdAt      DateTime @default(now())
+
+  @@index([year, month])
+}
