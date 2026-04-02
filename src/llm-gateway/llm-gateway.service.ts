@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import Groq from 'groq-sdk';
 import axios, { AxiosError } from 'axios';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 interface ModelConfig {
-  provider: 'groq' | 'deepseek' | 'anthropic';
+  provider: 'groq' | 'deepseek' | 'anthropic' | 'gemini';
   model: string;
   apiKey: string;
   maxTokens: number;
@@ -20,9 +21,9 @@ interface ProviderResponse {
 
 @Injectable()
 export class LLMGatewayService {
-  private primaryConfig: ModelConfig;
+  private primaryConfig!: ModelConfig;
   private fallbackConfigs: ModelConfig[] = [];
-  private keyRotationIndex = 0;
+  private readonly _keyRotationIndex = 0; // reserved for future key rotation
   private circuitBreakers: Map<string, { failCount: number; openUntil: number }> =
     new Map();
 
@@ -31,6 +32,15 @@ export class LLMGatewayService {
   }
 
   private initializeModels() {
+    // Fallback 3: Gemini (Google)
+    this.fallbackConfigs.push({
+      provider: 'gemini',
+      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+      apiKey: process.env.GEMINI_API_KEY || '',
+      maxTokens: 1024,
+      temperature: 0.7,
+    });
+
     // Primary: Groq (fast)
     this.primaryConfig = {
       provider: 'groq',
@@ -85,7 +95,7 @@ export class LLMGatewayService {
 
       throw new Error('All LLM providers failed');
     } catch (error) {
-      console.error('❌ LLM Gateway error:', error.message);
+      console.error('❌ LLM Gateway error:', (error as Error).message);
       return 'Service temporarily unavailable. Please try again later.';
     }
   }
@@ -109,7 +119,7 @@ export class LLMGatewayService {
         .replace(/^#+\s/gm, '')
         .replace(/^-\s/gm, '• ');
     } catch (error) {
-      throw new Error(`Chat error: ${error.message}`);
+      throw new Error(`Chat error: ${(error as Error).message}`);
     }
   }
 
@@ -146,6 +156,8 @@ export class LLMGatewayService {
         response = await this.callDeepSeek(config, prompt, systemPrompt);
       } else if (config.provider === 'anthropic') {
         response = await this.callAnthropic(config, prompt, systemPrompt);
+      } else if (config.provider === 'gemini') {
+        response = await this.callGemini(config, prompt, systemPrompt);
       } else {
         return { success: false, error: 'Unknown provider' };
       }
@@ -261,6 +273,28 @@ export class LLMGatewayService {
     );
 
     return response.data.content[0]?.text || '';
+  }
+
+  /**
+   * Google Gemini API call
+   */
+  private async callGemini(
+    config: ModelConfig,
+    prompt: string,
+    systemPrompt?: string,
+  ): Promise<string> {
+    const genAI = new GoogleGenerativeAI(config.apiKey);
+    const model = genAI.getGenerativeModel({
+      model: config.model,
+      systemInstruction: systemPrompt || 'You are a helpful assistant. Always respond with plain text, NO markdown.',
+      generationConfig: {
+        maxOutputTokens: config.maxTokens,
+        temperature: config.temperature,
+      },
+    });
+
+    const result = await model.generateContent(prompt);
+    return result.response.text();
   }
 
   /**

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WorkloadAnalysisService } from '../workload/workload-analysis.service';
 import { ParticipationReportService } from '../reports/participation.service';
 import { TelegramGroupService } from './telegram-group.service';
+import { ERPClientService } from '../common/services/erp-client.service';
 import TelegramBot from 'node-telegram-bot-api';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class BotCommandService {
     private prisma: PrismaService,
     private workloadAnalysis: WorkloadAnalysisService,
     private participation: ParticipationReportService,
+    private erp: ERPClientService,
     @Inject(forwardRef(() => TelegramGroupService))
     private telegramGroup: TelegramGroupService,
   ) {}
@@ -280,16 +282,43 @@ Last check: ${new Date().toLocaleString('en-US')}
     await bot.sendMessage(chatId, '📊 Đang lấy dữ liệu cảnh báo...');
     try {
       const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth() + 1;
+      const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const year = previousMonth.getFullYear();
+      const month = previousMonth.getMonth() + 1;
 
       const report = await this.participation.generateMonthlyReport(year, month);
 
       if (report.rows.length === 0) {
-        await bot.sendMessage(
-          chatId,
-          `❌ Chưa có dữ liệu tháng ${month}/${year}.\nDùng lệnh /workload để xem hoặc sync dữ liệu trước.`,
-        );
+        // Fallback: lấy từ ERP
+        const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+        const erpReport = await this.erp.getMonthlyWorkloadReport(monthStr).catch(() => null);
+
+        if (!erpReport || !erpReport.employees || erpReport.employees.length === 0) {
+          await bot.sendMessage(
+            chatId,
+            `❌ Chưa có dữ liệu tháng ${month}/${year}.\nDùng lệnh /workload để xem hoặc sync dữ liệu trước.`,
+          );
+          return;
+        }
+
+        const threshold = erpReport.summary?.selfLearningThreshold ?? 30;
+        const atRisk = erpReport.employees.filter((e) => e.isAtRisk);
+
+        let msg = `⚠️ <b>Cảnh báo Workload ${month}/${year}</b> (ERP)\n\n`;
+        msg += `👥 Tổng nhân sự: ${erpReport.employees.length}\n`;
+        msg += `🔴 Vượt ngưỡng ${threshold}h: ${atRisk.length}\n\n`;
+
+        if (atRisk.length > 0) {
+          msg += `<b>Danh sách vượt ngưỡng:</b>\n`;
+          atRisk.forEach((e) => {
+            msg += `• ${e.fullName}: ${e.selfLearningHours.toFixed(1)}h self-learning\n`;
+          });
+          msg += `\n💡 Dùng /analyze &lt;tên&gt; để phân tích chi tiết`;
+        } else {
+          msg += `✅ Tất cả nhân sự đều trong ngưỡng an toàn!`;
+        }
+
+        await bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
         return;
       }
 
@@ -326,16 +355,53 @@ Last check: ${new Date().toLocaleString('en-US')}
     await bot.sendMessage(chatId, '📊 Đang tạo báo cáo workload...');
     try {
       const now = new Date();
-      const year = args?.[0] ? parseInt(args[0]) : now.getFullYear();
-      const month = args?.[1] ? parseInt(args[1]) : now.getMonth() + 1;
+      const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const year = args?.[0] ? parseInt(args[0]) : previousMonth.getFullYear();
+      const month = args?.[1] ? parseInt(args[1]) : previousMonth.getMonth() + 1;
 
       const report = await this.participation.generateMonthlyReport(year, month);
 
       if (report.rows.length === 0) {
-        await bot.sendMessage(
-          chatId,
-          `❌ Chưa có dữ liệu tháng ${month}/${year}.\nSync dữ liệu từ ERP trước qua API /api/sync/workload`,
-        );
+        // Fallback: lấy từ ERP
+        const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+        const erpReport = await this.erp.getMonthlyWorkloadReport(monthStr).catch(() => null);
+
+        if (!erpReport || !erpReport.employees || erpReport.employees.length === 0) {
+          await bot.sendMessage(
+            chatId,
+            `❌ Chưa có dữ liệu tháng ${month}/${year}.\nSync dữ liệu từ ERP trước qua API /api/sync/workload`,
+          );
+          return;
+        }
+
+        const emps = erpReport.employees;
+        const threshold = erpReport.summary?.selfLearningThreshold ?? 30;
+        const atRisk = emps.filter((e) => e.isAtRisk);
+        const avgSL = emps.reduce((s, e) => s + e.selfLearningHours, 0) / emps.length;
+        const avgLog = emps.reduce((s, e) => s + e.actualLoggedHours, 0) / emps.length;
+
+        let msg = `📊 <b>Workload Report ${month}/${year}</b> (ERP)\n\n`;
+        msg += `👥 Nhân sự: ${emps.length}\n`;
+        msg += `📈 Avg log dự án: ${avgLog.toFixed(1)}h\n`;
+        msg += `📉 Avg self-learning: ${avgSL.toFixed(1)}h\n`;
+        msg += `⚠️ Vượt ngưỡng ${threshold}h: ${atRisk.length} người\n`;
+
+        if (atRisk.length > 0) {
+          msg += `\n🔴 <b>Vượt ngưỡng:</b>\n`;
+          atRisk.slice(0, 10).forEach((e) => {
+            msg += `• ${e.fullName}: ${e.selfLearningHours.toFixed(1)}h\n`;
+          });
+          if (atRisk.length > 10) msg += `... và ${atRisk.length - 10} người khác\n`;
+        }
+
+        const lowest = [...emps].sort((a, b) => a.actualPercent - b.actualPercent).slice(0, 3);
+        msg += `\n📉 <b>Log ít nhất:</b>\n`;
+        lowest.forEach((e) => {
+          msg += `• ${e.fullName}: ${e.actualLoggedHours.toFixed(1)}h (${e.actualPercent.toFixed(0)}%)\n`;
+        });
+
+        msg += `\n💡 Dùng /analyze &lt;tên&gt; để phân tích AI từng người`;
+        await bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
         return;
       }
 

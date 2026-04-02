@@ -24,7 +24,7 @@ export class MonthlyScheduler {
   /**
    * Monthly report: Chạy định kỳ để tổng hợp dữ liệu
    */
-  @Cron(CronExpression.EVERY_5_HOURS) // Thay đổi tùy theo nhu cầu thực tế
+  @Cron('0 8 1 * *') // Chạy vào 8h sáng ngày 1 hàng tháng
   async generateMonthlyParticipationReport() {
     const now = new Date();
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
