@@ -4,6 +4,7 @@ import { accountingBotAPI } from './agent-api-client';
 import { ParticipationReportService } from '../../reports/participation.service';
 import { NlpIntentService, IntentType } from './nlp-intent.service';
 import { ConversationContextService } from './conversation-context.service';
+import { LLMGatewayService } from '../../llm-gateway/llm-gateway.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -21,6 +22,7 @@ export class SmartQueryService {
     private participation: ParticipationReportService,
     private nlp: NlpIntentService,
     private context: ConversationContextService,
+    private llm: LLMGatewayService,
   ) {}
 
   /**
@@ -88,7 +90,7 @@ export class SmartQueryService {
       case 'sync_workload':
         return this.handleWorkloadQuery(rawQuestion, entities);
       default:
-        return this.handleDatabaseSearch(rawQuestion);
+        return this.handleGeneralChat(rawQuestion);
     }
   }
 
@@ -501,35 +503,46 @@ export class SmartQueryService {
   }
 
   /**
-   * Fallback: Database search for any query
+   * General chat: dùng LLM trả lời câu hỏi ngoài domain hoặc câu hỏi chung
+   * (ngày tháng, giải thích khái niệm, câu hỏi ngẫu nhiên, v.v.)
+   */
+  private async handleGeneralChat(question: string): Promise<string> {
+    try {
+      const systemPrompt = `Bạn là trợ lý AI của công ty Twendee, hỗ trợ HR và kế toán.
+Trả lời câu hỏi một cách tự nhiên, thân thiện.
+Nếu câu hỏi liên quan đến workload, phiếu chi, kế toán → gợi ý người dùng đặt câu hỏi cụ thể hơn.
+Trả lời tiếng Việt, ngắn gọn (tối đa 3-4 câu).`;
+
+      return await this.llm.generateResponse(question, systemPrompt);
+    } catch {
+      return 'Xin lỗi, tôi không thể xử lý câu hỏi này. Bạn có thể hỏi về workload, phiếu chi, hoặc báo cáo kế toán.';
+    }
+  }
+
+  /**
+   * Fallback: Database search for voucher-specific queries
    */
   private async handleDatabaseSearch(question: string): Promise<string> {
     try {
-      // Try to find relevant vouchers by description
       const vouchers = await this.prisma.voucher.findMany({
         where: {
-          reason: {
-            contains: question.substring(0, 50),
-            mode: 'insensitive',
-          },
+          reason: { contains: question.substring(0, 50), mode: 'insensitive' },
         },
         take: 5,
       });
 
       if (vouchers.length === 0) {
-        return `❌ Không tìm thấy kết quả cho: "${question}"\n\nGợi ý: Hỏi về phiếu chi, duyệt, tài khoản, cashflow...`;
+        return this.handleGeneralChat(question);
       }
 
-      let response = `📋 PHIẾU CHI LIÊN QUAN\n\n`;
+      let response = `Phiếu chi liên quan:\n\n`;
       for (const v of vouchers) {
         const amt = v.amount ? parseInt(v.amount.toString()).toLocaleString('vi-VN') : '0';
-        response += `🎫 <b>${v.voucherNumber}</b> • ${amt} VND\n`;
-        response += `   ${v.reason}\n`;
+        response += `${v.voucherNumber} • ${amt} VND\n   ${v.reason}\n`;
       }
-
       return response;
     } catch (error) {
-      return `❌ Lỗi tìm kiếm: ${(error as Error).message}`;
+      return `Lỗi tìm kiếm: ${(error as Error).message}`;
     }
   }
 }

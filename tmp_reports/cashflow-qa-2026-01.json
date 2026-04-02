@@ -1,0 +1,155 @@
+{
+  "period": "2026-01",
+  "sourceFilePath": "/root/project/BE_ACCOUNT/uploads/gl_1775124163099_So_chi_tiet_cac_tai_khoan (1).xlsx",
+  "reportFilePath": "/root/project/BE_ACCOUNT/exports/cashflow_2026-01.xlsx",
+  "generatedAt": "2026-04-02T10:02:45.281Z",
+  "rows": [
+    {
+      "row": 3,
+      "label": "ĐẦU KỲ",
+      "values": [
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000
+      ]
+    },
+    {
+      "row": 7,
+      "label": "131+515.1-635.1",
+      "values": [
+        1110
+      ]
+    },
+    {
+      "row": 12,
+      "label": "Thu khác",
+      "values": [
+        9350
+      ]
+    },
+    {
+      "row": 13,
+      "label": "Thu từ khấu trừ thuế CTV",
+      "values": [
+        0
+      ]
+    },
+    {
+      "row": 14,
+      "label": "Lãi/lỗ TG",
+      "values": [
+        0
+      ]
+    },
+    {
+      "row": 15,
+      "label": "515.4-635.2",
+      "values": [
+        69700
+      ]
+    },
+    {
+      "row": 24,
+      "label": "chia theo pbo",
+      "values": [
+        105380
+      ]
+    },
+    {
+      "row": 32,
+      "label": "6421.2",
+      "values": [
+        155720
+      ]
+    },
+    {
+      "row": 38,
+      "label": "6421.3",
+      "values": [
+        484
+      ]
+    },
+    {
+      "row": 40,
+      "label": "6421.5",
+      "values": [
+        528
+      ]
+    },
+    {
+      "row": 41,
+      "label": "6421.6",
+      "values": [
+        5030
+      ]
+    },
+    {
+      "row": 42,
+      "label": "6421.7",
+      "values": [
+        7492
+      ]
+    },
+    {
+      "row": 43,
+      "label": "154",
+      "values": [
+        5325
+      ]
+    },
+    {
+      "row": 45,
+      "label": "6421-15",
+      "values": [
+        87
+      ]
+    },
+    {
+      "row": 46,
+      "label": "6421.8",
+      "values": [
+        484
+      ]
+    },
+    {
+      "row": 63,
+      "label": "Các khoản chi khác (cho vay, tín dụng,...)",
+      "values": [
+        86754
+      ]
+    },
+    {
+      "row": 64,
+      "label": "Khoản đi vay",
+      "values": [
+        41
+      ]
+    },
+    {
+      "row": 66,
+      "label": "CUỒI KỲ",
+      "values": [
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000,
+        10000
+      ]
+    }
+  ]
+}

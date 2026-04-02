@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { LLMGatewayService } from '../llm-gateway/llm-gateway.service';
-import { ParticipationReportService } from '../reports/participation.service';
+import { ParticipationReportService, ParticipationRow } from '../reports/participation.service';
 
 @Injectable()
 export class WorkloadAnalysisService {
@@ -12,107 +12,174 @@ export class WorkloadAnalysisService {
   ) {}
 
   /**
-   * AI-powered root cause analysis: WHY does an employee have high self-learning?
-   * Fetches report data, builds context, asks LLM for insights.
+   * Phân tích workload AI cho một nhân sự — hỗ trợ context hội thoại
+   * ReAct flow: thu thập data → build context → LLM reasoning → kết quả hành động
    */
-  async analyzeSelfLearning(employeeName: string, year: number, month: number): Promise<string> {
+  async analyzeSelfLearning(
+    employeeName: string,
+    year: number,
+    month: number,
+    conversationContext?: string[],
+  ): Promise<string> {
     const report = await this.participation.generateMonthlyReport(year, month);
 
     if (report.rows.length === 0) {
-      return `❌ Chưa có dữ liệu tháng ${month}/${year}. Hãy sync dữ liệu trước.`;
+      return `Chưa có dữ liệu tháng ${month}/${year}. Hãy đồng bộ dữ liệu trước.`;
     }
 
-    // Case-insensitive partial name match
     const emp = report.rows.find((r) =>
       r.employeeName.toLowerCase().includes(employeeName.toLowerCase()),
     );
 
     if (!emp) {
       const names = report.rows.map((r) => r.employeeName).join(', ');
-      return `❌ Không tìm thấy nhân sự "${employeeName}" trong tháng ${month}/${year}.\n\nDanh sách có dữ liệu: ${names}`;
+      return (
+        `Không tìm thấy "${employeeName}" trong tháng ${month}/${year}.\n\n` +
+        `Nhân sự có dữ liệu: ${names}`
+      );
     }
+
+    // Lấy thêm data tháng trước để so sánh trend
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevReport = await this.participation.generateMonthlyReport(prevYear, prevMonth);
+    const prevEmp = prevReport.rows.find((r) =>
+      r.employeeName.toLowerCase().includes(employeeName.toLowerCase()),
+    );
 
     const projectBreakdown =
       emp.projects.length > 0
         ? emp.projects
-            .map((p) => `  - ${p.projectName || p.projectCode}: ${p.hours.toFixed(1)}h (${p.percent.toFixed(1)}%)`)
+            .map(
+              (p) =>
+                `  - ${p.projectName || p.projectCode}: ${p.hours.toFixed(1)}h (${p.percent.toFixed(1)}%)`,
+            )
             .join('\n')
-        : '  - Không có dữ liệu dự án';
+        : '  - Không có dữ liệu dự án (chưa log Jira hoặc chưa phân công)';
 
-    const prompt = `Phân tích workload của nhân sự sau và đưa ra nguyên nhân + khuyến nghị cụ thể:
+    const trendSection = prevEmp
+      ? `So sánh với tháng trước (${prevMonth}/${prevYear}):
+- Giờ log dự án: ${prevEmp.projectHours.toFixed(1)}h → ${emp.projectHours.toFixed(1)}h (${emp.projectHours >= prevEmp.projectHours ? '+' : ''}${(emp.projectHours - prevEmp.projectHours).toFixed(1)}h)
+- Self-learning: ${prevEmp.selfLearningHours.toFixed(1)}h → ${emp.selfLearningHours.toFixed(1)}h`
+      : 'Không có dữ liệu tháng trước để so sánh.';
 
-Nhân sự: ${emp.employeeName}
-Tháng: ${month}/${year}
+    const contextSection =
+      conversationContext && conversationContext.length > 0
+        ? `\nContext hội thoại gần nhất:\n${conversationContext.slice(-2).join('\n')}\n`
+        : '';
 
-Giờ làm việc:
-- Giờ chuẩn (effective): ${emp.standardHours.toFixed(1)}h
-- Giờ log dự án: ${emp.projectHours.toFixed(1)}h (${emp.projectPercent.toFixed(1)}%)
-- Self-learning: ${emp.selfLearningHours.toFixed(1)}h (${emp.selfLearningPercent.toFixed(1)}%)
-- Cảnh báo vượt ngưỡng 30h: ${emp.alert ? 'CÓ' : 'Không'}
+    const severityLabel =
+      emp.selfLearningHours > 50
+        ? 'RẤT CAO (>50h)'
+        : emp.selfLearningHours > 30
+          ? 'CAO (vượt ngưỡng 30h)'
+          : emp.selfLearningHours > 20
+            ? 'TRUNG BÌNH (tiệm cận ngưỡng)'
+            : 'BÌNH THƯỜNG';
 
-Phân bổ dự án:
-${projectBreakdown}
+    const trendArrow = prevEmp
+      ? emp.selfLearningHours > prevEmp.selfLearningHours ? '📈' : '📉'
+      : '';
 
-Phân tích 3 điểm sau:
-1. Nguyên nhân chính tại sao self-learning ${emp.selfLearningHours > 30 ? 'vượt ngưỡng 30h' : `cao (${emp.selfLearningHours.toFixed(1)}h)`}
-2. Các vấn đề tiềm ẩn (thiếu dự án, chưa log Jira, underallocation, v.v.)
-3. Hành động cụ thể cho HR/Manager
+    const prompt = `Dữ liệu nhân sự:
+${contextSection}Tên: ${emp.employeeName} | ${month}/${year}
+Log dự án: ${emp.projectHours.toFixed(1)}h (${emp.projectPercent.toFixed(1)}%) | Self-learning: ${emp.selfLearningHours.toFixed(1)}h — ${severityLabel}
+${trendSection}
+Dự án: ${projectBreakdown}
 
-Viết ngắn gọn, tiếng Việt, dùng emoji, tối đa 200 từ.`;
+Viết phân tích NGẮN GỌN theo đúng format sau (dùng emoji, tối đa 80 từ):
 
-    const systemPrompt =
-      'Bạn là chuyên gia phân tích workload HR. Đưa ra nhận xét thực tế, có giá trị hành động.';
+🔴/🟡/🟢 Tình trạng: [1 câu tóm tắt mức độ]
+${trendArrow} Xu hướng: [so tháng trước, 1 câu]
+💡 Nguyên nhân: [1-2 bullet ngắn]
+✅ Hành động: [1-2 bullet cụ thể cho HR/Manager]`;
+
+    const systemPrompt = `Chuyên gia HR workload. Trả lời tiếng Việt, súc tích, dùng emoji, đúng format được yêu cầu. Không thêm mở đầu/kết luận dài dòng.`;
 
     try {
       const analysis = await this.llm.generateResponse(prompt, systemPrompt);
-      return `🔍 <b>Phân tích AI: ${emp.employeeName}</b> (${month}/${year})\n\n${analysis}`;
+      return `🔍 ${emp.employeeName} — Tháng ${month}/${year}\n\n${analysis}`;
     } catch (error: any) {
       this.logger.warn(`LLM analysis failed, using rule-based fallback: ${error.message}`);
-      return this.ruleBasedAnalysis(emp, month, year);
+      return this.ruleBasedAnalysis(emp, prevEmp, month, year, prevMonth, prevYear);
     }
   }
 
   /**
-   * AI-powered team insights: overall workload health for a month.
+   * AI insights tổng quan team — hỗ trợ context hội thoại
    */
-  async generateTeamInsights(year: number, month: number): Promise<string> {
+  async generateTeamInsights(
+    year: number,
+    month: number,
+    conversationContext?: string[],
+  ): Promise<string> {
     const report = await this.participation.generateMonthlyReport(year, month);
 
     if (report.rows.length === 0) {
-      return `❌ Chưa có dữ liệu tháng ${month}/${year}. Hãy sync dữ liệu trước.`;
+      return `Chưa có dữ liệu tháng ${month}/${year}. Hãy đồng bộ dữ liệu trước.`;
     }
+
+    // Data tháng trước để so sánh trend
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevReport = await this.participation.generateMonthlyReport(prevYear, prevMonth);
 
     const avgSL = report.rows.reduce((sum, r) => sum + r.selfLearningHours, 0) / report.rows.length;
     const avgLog = report.rows.reduce((sum, r) => sum + r.projectHours, 0) / report.rows.length;
-    const alertList =
+    const prevAvgSL =
+      prevReport.rows.length > 0
+        ? prevReport.rows.reduce((sum, r) => sum + r.selfLearningHours, 0) / prevReport.rows.length
+        : null;
+
+    // Phân loại nhân sự theo mức độ rủi ro
+    const critical = report.rows.filter((r) => r.selfLearningHours > 50);
+    const exceeded = report.rows.filter((r) => r.selfLearningHours > 30 && r.selfLearningHours <= 50);
+    const approaching = report.rows.filter(
+      (r) => r.selfLearningHours > 21 && r.selfLearningHours <= 30,
+    );
+    const healthy = report.rows.filter((r) => r.selfLearningHours <= 21);
+
+    const alertDetails =
       report.alerts.length > 0
-        ? report.alerts.map((a) => `  - ${a.employeeName}: ${a.hours.toFixed(1)}h`).join('\n')
+        ? report.alerts
+            .map(
+              (a) =>
+                `  - ${a.employeeName}: ${a.hours.toFixed(1)}h self-learning` +
+                (a.hours > 50 ? ' [RẤT CAO]' : ''),
+            )
+            .join('\n')
         : '  (Không có)';
 
-    const prompt = `Phân tích tổng quan workload team tháng ${month}/${year}:
+    const trendNote =
+      prevAvgSL !== null
+        ? `Trung bình self-learning tháng trước: ${prevAvgSL.toFixed(1)}h → tháng này: ${avgSL.toFixed(1)}h (${avgSL >= prevAvgSL ? '+' : ''}${(avgSL - prevAvgSL).toFixed(1)}h)`
+        : '';
 
-Thống kê:
-- Tổng nhân sự: ${report.rows.length}
-- Vượt ngưỡng 30h self-learning: ${report.alerts.length} người
-- Trung bình giờ log dự án: ${avgLog.toFixed(1)}h
-- Trung bình self-learning: ${avgSL.toFixed(1)}h
+    const contextSection =
+      conversationContext && conversationContext.length > 0
+        ? `\nContext hội thoại:\n${conversationContext.slice(-2).join('\n')}\n`
+        : '';
 
-Nhân sự vượt ngưỡng:
-${alertList}
+    const healthIcon = report.alerts.length === 0 ? '🟢' : critical.length > 0 ? '🔴' : '🟡';
 
-Đưa ra:
-1. Nhận xét tổng quan sức khỏe workload team
-2. Xu hướng đáng lo ngại (nếu có)
-3. 2-3 hành động ưu tiên cho HR tháng tới
+    const prompt = `Dữ liệu team tháng ${month}/${year}:
+${contextSection}👥 ${report.rows.length} nhân sự | 🟢 ${healthy.length} bình thường | 🟡 ${approaching.length} tiệm cận | 🔴 ${exceeded.length + critical.length} vượt ngưỡng
+📊 Avg log: ${avgLog.toFixed(1)}h | Avg SL: ${avgSL.toFixed(1)}h${trendNote ? ' | ' + trendNote : ''}
+Vượt ngưỡng: ${alertDetails}
 
-Ngắn gọn, tiếng Việt, emoji, tối đa 200 từ.`;
+Viết nhận xét NGẮN GỌN theo format sau (emoji, tối đa 80 từ):
 
-    const systemPrompt =
-      'Bạn là chuyên gia HR phân tích workload nhân sự. Đưa ra nhận xét thực tế, có giá trị.';
+${healthIcon} Sức khỏe: [Tốt/Cần chú ý/Đáng lo ngại — 1 câu lý do]
+📈/📉 Xu hướng: [so tháng trước, 1 câu]
+🎯 Ưu tiên:
+• [hành động 1]
+• [hành động 2]`;
+
+    const systemPrompt = `Chuyên gia HR workload. Trả lời tiếng Việt, súc tích, dùng emoji, đúng format. Không thêm lời mở đầu dài dòng.`;
 
     try {
       const insights = await this.llm.generateResponse(prompt, systemPrompt);
-      return `🤖 <b>AI Insights — Team ${month}/${year}</b>\n\n${insights}`;
+      return `📊 Team Insights — Tháng ${month}/${year}\n\n${insights}`;
     } catch (error: any) {
       this.logger.warn(`LLM insights failed, using rule-based fallback: ${error.message}`);
       return this.ruleBasedTeamInsights(report, month, year);
@@ -121,20 +188,38 @@ Ngắn gọn, tiếng Việt, emoji, tối đa 200 từ.`;
 
   // ─── Rule-based fallbacks ─────────────────────────────────────────────────
 
-  private ruleBasedAnalysis(emp: any, month: number, year: number): string {
-    let msg = `📊 <b>${emp.employeeName}</b> — Tháng ${month}/${year}\n\n`;
-    msg += `• Giờ chuẩn: ${emp.standardHours.toFixed(1)}h\n`;
-    msg += `• Giờ log: ${emp.projectHours.toFixed(1)}h (${emp.projectPercent.toFixed(1)}%)\n`;
-    msg += `• Self-learning: ${emp.selfLearningHours.toFixed(1)}h (${emp.selfLearningPercent.toFixed(1)}%)\n\n`;
+  private ruleBasedAnalysis(
+    emp: ParticipationRow,
+    prevEmp: ParticipationRow | undefined,
+    month: number,
+    year: number,
+    prevMonth: number,
+    prevYear: number,
+  ): string {
+    const statusIcon = emp.selfLearningHours > 50 ? '🔴' : emp.selfLearningHours > 30 ? '🟠' : emp.selfLearningHours > 21 ? '🟡' : '🟢';
+    let msg = `🔍 ${emp.employeeName} — Tháng ${month}/${year}\n\n`;
+    msg += `${statusIcon} Log: ${emp.projectHours.toFixed(1)}h (${emp.projectPercent.toFixed(0)}%) | SL: ${emp.selfLearningHours.toFixed(1)}h (${emp.selfLearningPercent.toFixed(0)}%)\n`;
+
+    if (prevEmp) {
+      const diff = emp.selfLearningHours - prevEmp.selfLearningHours;
+      const arrow = diff > 0 ? '📈' : '📉';
+      msg += `${arrow} vs T${prevMonth}/${prevYear}: SL ${diff > 0 ? '+' : ''}${diff.toFixed(1)}h\n`;
+    }
+
+    msg += '\n';
 
     if (emp.selfLearningHours > 30) {
-      msg += `🔴 <b>Vượt ngưỡng 30h!</b>\n\n`;
+      msg += `💡 Nguyên nhân:\n`;
       if (emp.projects.length === 0) {
-        msg += `Nguyên nhân: Không có dữ liệu dự án — có thể chưa được phân công hoặc chưa log Jira.\n`;
+        msg += `• Không có dự án nào được log\n`;
       } else if (emp.projectHours < emp.standardHours * 0.5) {
-        msg += `Nguyên nhân: Giờ log dự án rất thấp so với giờ chuẩn.\n`;
-        msg += `Khuyến nghị: Kiểm tra lại lịch phân công và nhắc log Jira đầy đủ.\n`;
+        msg += `• Giờ log chỉ ${emp.projectPercent.toFixed(0)}% — thấp hơn chuẩn\n`;
+      } else {
+        msg += `• Phân bổ dự án chưa tối ưu\n`;
       }
+      msg += `\n✅ Hành động:\n• Kiểm tra phân công & nhắc log Jira\n• Review lại assignment tuần này`;
+    } else if (emp.selfLearningHours > 21) {
+      msg += `⚠️ Tiệm cận ngưỡng 30h — cần theo dõi thêm.`;
     } else {
       msg += `✅ Workload bình thường.`;
     }
@@ -143,20 +228,19 @@ Ngắn gọn, tiếng Việt, emoji, tối đa 200 từ.`;
   }
 
   private ruleBasedTeamInsights(report: any, month: number, year: number): string {
-    const avgSL = report.rows.reduce((sum: number, r: any) => sum + r.selfLearningHours, 0) / report.rows.length;
-    let msg = `📊 <b>Workload Team ${month}/${year}</b>\n\n`;
-    msg += `👥 Nhân sự: ${report.rows.length}\n`;
-    msg += `📈 Trung bình self-learning: ${avgSL.toFixed(1)}h\n`;
-    msg += `⚠️ Vượt ngưỡng 30h: ${report.alerts.length} người\n\n`;
+    const avgSL = report.rows.reduce((s: number, r: any) => s + r.selfLearningHours, 0) / report.rows.length;
+    const critical = report.rows.filter((r: any) => r.selfLearningHours > 50).length;
+    const healthIcon = report.alerts.length === 0 ? '🟢' : critical > 0 ? '🔴' : '🟡';
+
+    let msg = `📊 Team Insights — Tháng ${month}/${year}\n\n`;
+    msg += `${healthIcon} ${report.rows.length} nhân sự | Avg SL: ${avgSL.toFixed(1)}h | 🔴 Vượt ngưỡng: ${report.alerts.length}`;
+    if (critical > 0) msg += ` (${critical} rất cao >50h)`;
+    msg += '\n\n';
 
     if (report.alerts.length > 0) {
-      msg += `🔴 <b>Cần chú ý:</b>\n`;
-      report.alerts.forEach((a: any) => {
-        msg += `• ${a.employeeName}: ${a.hours.toFixed(1)}h\n`;
-      });
-      msg += `\nKhuyến nghị: Review phân công dự án cho các nhân sự trên.`;
+      msg += `🎯 Ưu tiên:\n• Review phân công cho ${report.alerts.length} nhân sự vượt ngưỡng\n• Nhắc log Jira đầy đủ trước cuối tháng`;
     } else {
-      msg += `✅ Tất cả nhân sự trong ngưỡng an toàn.`;
+      msg += `✅ Team trong ngưỡng an toàn.`;
     }
 
     return msg;

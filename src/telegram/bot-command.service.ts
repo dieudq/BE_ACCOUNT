@@ -18,63 +18,63 @@ export class BotCommandService {
   ) {}
 
   /**
-   * Handle /start command
+   * Handle /start command — text-first onboarding
    */
   async handleStart(bot: TelegramBot, chatId: string | number): Promise<void> {
-    const welcome = `
-🤖 <b>Accounting + Workload AI Bot</b>
+    const welcome = `Xin chào! Tôi là AI Agent hỗ trợ HR & Kế toán của Twendee.
 
-── Kế toán ──
-/approvals - Phê duyệt phiếu chi
-/vouchers - Danh sách phiếu chi
-/balance &lt;code&gt; - Số dư tài khoản GL
-/status - Trạng thái hệ thống
+Bạn có thể nhắn tin tự nhiên, ví dụ:
 
-── Workload AI 🔥 ──
-/warnings - Cảnh báo tháng này
-/workload [year] [month] - Báo cáo
-/analyze &lt;name&gt; - AI phân tích nhân sự
-/insights [year] [month] - AI insights
+Workload:
+  "Xem báo cáo workload tháng 3"
+  "Ai đang tự học nhiều nhất tháng này?"
+  "Phân tích Nguyễn Văn A tháng 3"
+  "Nhận xét tổng quan team tháng 3"
+  "Đồng bộ rồi cho tôi xem báo cáo tháng 4"
 
-── System (Admin) ──
-/broadcast <text> - Gửi tin nhắn full nhóm
-/help - Xem đầy đủ hướng dẫn
-    `.trim();
+Kế toán:
+  "Phiếu chi nào đang chờ duyệt?"
+  "Phiếu AX99 đang ở bước nào?"
+  "Cashflow tháng 3 như thế nào?"
 
-    await bot.sendMessage(chatId, welcome, { parse_mode: 'HTML' });
+Không cần nhớ lệnh — chỉ cần nói điều bạn muốn biết.
+Nhắn /help để xem thêm ví dụ.`;
+
+    await bot.sendMessage(chatId, welcome);
   }
 
   /**
-   * Handle /help command
+   * Handle /help command — text-first guidance với ví dụ thực tế
    */
   async handleHelp(bot: TelegramBot, chatId: string | number): Promise<void> {
-    const help = `
-📚 AVAILABLE COMMANDS
+    const help = `Tôi hiểu ngôn ngữ tự nhiên — không cần gõ lệnh cứng nhắc.
+
+── Workload & HR ──
+"Báo cáo workload tháng 3/2026"
+"Ai vượt ngưỡng 30h self-learning tháng này?"
+"Phân tích tại sao Nguyễn Văn A self-learning cao"
+"Nhận xét AI về toàn team tháng 3"
+"Xuất Excel báo cáo tháng 3"
+"Đồng bộ dữ liệu ERP tháng 4 rồi xem báo cáo"
 
 ── Kế toán ──
-/start - Welcome & intro
-/report - Participation report (month/year required)
-  Usage: /report 2026 3
-/approvals - Show pending approvals
-/vouchers - List all vouchers
-/balance &lt;code&gt; - GL Account Balance
-/export - Export reports
-/status - System health check
+"Phiếu chi nào đang chờ duyệt?"
+"Trạng thái phiếu AX123 đang ở bước nào?"
+"Tổng chi phí tháng 1 là bao nhiêu?"
+"Tài khoản 334.1 là gì?"
+"Tạo báo cáo cashflow tự động từ file sổ chi tiết"
+"Hỏi báo cáo cashflow tháng 1: tổng thu/chi là bao nhiêu?"
+"/cashflow tháng 1 năm 2026"
 
-── Workload AI ──
-/warnings - Cảnh báo tháng này
-/workload [year] [month] - Báo cáo workload
-  Usage: /workload 2026 3
-/analyze &lt;name&gt; [year] [month] - AI phân tích nhân sự
-  Usage: /analyze Nguyen Van A
-/insights [year] [month] - AI insights tổng quan team
+── Xác nhận phiếu (gõ chính xác) ──
+APPROVE &lt;id&gt; — Duyệt phiếu
+REJECT &lt;id&gt; &lt;lý do&gt; — Từ chối phiếu
+  YES &lt;token&gt; / NO — Xác nhận/huỷ tác vụ
 
-── System (Admin) ──
-/broadcast <text> - Gửi tin nhắn full nhóm (Admin only)
-  Usage: /broadcast Thông báo họp lúc 10h sáng mai.
+── Admin ──
+/broadcast &lt;nội dung&gt; — Gửi thông báo toàn nhóm
 
-/help - Show this message
-    `.trim();
+Cứ hỏi tự nhiên, agent sẽ tự hiểu context và đề xuất bước tiếp theo.`;
 
     await bot.sendMessage(chatId, help, { parse_mode: 'HTML' });
   }
@@ -225,11 +225,8 @@ Account found. Use API to get full balance.
   async handleExport(
     bot: TelegramBot,
     chatId: string | number,
-    // @ts-ignore
-    args?: string[],
+    _args?: string[],
   ): Promise<void> {
-    // @ts-ignore
-    const type = args?.[0] || 'participation';
 
     const message = `
 Export Options:
