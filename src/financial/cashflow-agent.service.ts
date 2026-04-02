@@ -6,9 +6,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GLFileProcessorService } from './gl-file-processor.service';
 import { LLMGatewayService } from '../llm-gateway/llm-gateway.service';
 
+type CashflowCategory = 'income' | 'expense' | 'total' | 'other';
+
 interface CashflowRow {
   row: number;
   label: string;
+  category?: CashflowCategory;
+  primaryValue?: number;
   values: number[];
 }
 
@@ -69,6 +73,7 @@ export class CashflowAgentService {
     const period = this.extractPeriodFromCashflowFile(outputFilePath);
     const dataset = await this.buildQaDataset(sourceFilePath, outputFilePath, period);
     const qaDatasetPath = this.saveQaDataset(dataset);
+    await this.saveDatasetToDB(dataset);
 
     this.saveRegistry({
       period,
@@ -96,8 +101,16 @@ export class CashflowAgentService {
 
   async answerQuestion(question: string, year?: number, month?: number): Promise<string> {
     const period = this.resolvePeriod(year, month);
-    let dataset = this.loadQaDatasetByPeriod(period);
 
+    // Ưu tiên load từ DB (nhanh, không cần đọc file)
+    let dataset = await this.loadDatasetFromDB(period);
+
+    // Nếu DB chưa có → thử JSON file
+    if (!dataset) {
+      dataset = this.loadQaDatasetByPeriod(period);
+    }
+
+    // Nếu vẫn không có → thử build từ Excel export file
     if (!dataset) {
       const reportFilePath = this.findCashflowExportFile(period);
       if (!reportFilePath) {
@@ -110,6 +123,7 @@ export class CashflowAgentService {
       const sourceFallback = this.resolveSourceFilePath() || 'unknown';
       dataset = await this.buildQaDataset(sourceFallback, reportFilePath, period);
       const qaDatasetPath = this.saveQaDataset(dataset);
+      await this.saveDatasetToDB(dataset);
       this.saveRegistry({
         period,
         sourceFilePath: sourceFallback,
@@ -122,26 +136,32 @@ export class CashflowAgentService {
     const rowsForPrompt = dataset.rows
       .filter((r) => r.values.length > 0)
       .slice(0, 180)
-      .map((r) => `${r.label}: ${r.values.join(', ')}`)
+      .map((r) => `${r.label} [${r.category ?? 'other'}]: ${r.values.join(', ')}`)
       .join('\n');
 
     const systemPrompt = `Bạn là trợ lý kế toán chuyên Q&A báo cáo cashflow.
 - Chỉ dựa vào dữ liệu cung cấp.
 - Nếu không đủ dữ liệu để kết luận, nói rõ "không đủ dữ liệu".
-- Trả lời ngắn gọn, tiếng Việt, tối đa 8 dòng.
-- Ưu tiên nêu số liệu chính xác và gợi ý bước kiểm tra tiếp theo.`;
+- Trả lời tiếng Việt, ngắn gọn, emoji phù hợp, tối đa 12 dòng.
+- Ưu tiên nêu số liệu chính xác kèm bình luận ngắn.`;
 
     const prompt = `Kỳ báo cáo: ${dataset.period}
-File báo cáo: ${dataset.reportFilePath}
 
-Dữ liệu cashflow đã trích xuất:
+Dữ liệu cashflow (label [category]: values):
 ${rowsForPrompt}
 
 Câu hỏi: ${question}`;
 
+    // Các câu hỏi có thể trả lời trực tiếp từ dataset thì ưu tiên deterministic,
+    // không phụ thuộc LLM để tránh fail khi toàn bộ key đang bị limit.
+    const normalizedQuestion = this.normalizeVi(question);
+    if (this.shouldUseDeterministicAnswer(normalizedQuestion)) {
+      return this.buildRuleBasedCashflowAnswer(dataset, question, false);
+    }
+
     try {
       const answer = await this.llm.generateResponse(prompt, systemPrompt);
-      if (/service temporarily unavailable|try again later/i.test(answer)) {
+      if (this.isUnavailableLikeText(answer) || !answer?.trim()) {
         return this.buildRuleBasedCashflowAnswer(dataset, question, true);
       }
       return `Q&A Cashflow ${dataset.period}\n${answer}`;
@@ -218,7 +238,14 @@ Câu hỏi: ${question}`;
       }
 
       if (values.length > 0) {
-        rows.push({ row: rowNum, label, values });
+        const primaryValue = values.find((v) => Math.abs(v) > 0.0001) ?? values[0] ?? 0;
+        rows.push({
+          row: rowNum,
+          label,
+          category: this.categorizeRow(label),
+          primaryValue,
+          values,
+        });
       }
     }
 
@@ -229,6 +256,24 @@ Câu hỏi: ${question}`;
       generatedAt: new Date().toISOString(),
       rows,
     };
+  }
+
+  /** Phân loại dòng cashflow dựa vào label */
+  private categorizeRow(label: string): CashflowCategory {
+    const norm = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const incomeKeys = [
+      'thu du an', 'thu dau tu', 'thu khac', 'doanh thu', 'thu phi', 'thu tu', 'thu ngan hang',
+    ];
+    const expenseKeys = [
+      'luong', 'chi phi', 'quan ly', 'van phong', 'hanh chinh', 'sales', 'marketing',
+      'ha tang', 'ke toan', 'tai chinh', 'dao tao', 'dam bao chat luong', 'bao hiem',
+    ];
+    const totalKeys = ['tong thu', 'tong chi', 'dong tien rong', 'net', 'tong cong'];
+
+    if (totalKeys.some((k) => norm.includes(k))) return 'total';
+    if (incomeKeys.some((k) => norm.includes(k))) return 'income';
+    if (expenseKeys.some((k) => norm.includes(k))) return 'expense';
+    return 'other';
   }
 
   private normalizeCell(value: any): string {
@@ -295,6 +340,65 @@ Câu hỏi: ${question}`;
     }
   }
 
+  /** Lưu toàn bộ dataset vào DB để fallback query nhanh */
+  private async saveDatasetToDB(dataset: CashflowQaDataset): Promise<void> {
+    try {
+      for (const row of dataset.rows) {
+        await (this.prisma as any).cashflowEntry.upsert({
+          where: { period_rowNum: { period: dataset.period, rowNum: row.row } },
+          update: {
+            label: row.label,
+            category: row.category ?? 'other',
+            primaryValue: row.primaryValue ?? 0,
+            allValues: row.values,
+          },
+          create: {
+            period: dataset.period,
+            rowNum: row.row,
+            label: row.label,
+            category: row.category ?? 'other',
+            primaryValue: row.primaryValue ?? 0,
+            allValues: row.values,
+          },
+        });
+      }
+      this.logger.log(`[Cashflow] Saved ${dataset.rows.length} entries to DB for ${dataset.period}`);
+    } catch (err: any) {
+      // DB có thể chưa có bảng (chưa migrate) — bỏ qua lỗi, không ảnh hưởng flow chính
+      this.logger.warn(`[Cashflow] saveDatasetToDB skipped: ${err.message}`);
+    }
+  }
+
+  /** Load dataset từ DB theo kỳ, trả null nếu chưa có */
+  private async loadDatasetFromDB(period: string): Promise<CashflowQaDataset | null> {
+    try {
+      const entries = await (this.prisma as any).cashflowEntry.findMany({
+        where: { period },
+        orderBy: { rowNum: 'asc' },
+      });
+      if (!entries || entries.length === 0) return null;
+
+      const rows: CashflowRow[] = entries.map((e: any) => ({
+        row: e.rowNum,
+        label: e.label,
+        category: e.category as CashflowCategory,
+        primaryValue: e.primaryValue,
+        values: Array.isArray(e.allValues) ? e.allValues : [],
+      }));
+
+      return {
+        period,
+        sourceFilePath: '',
+        reportFilePath: '',
+        generatedAt: entries[0].createdAt?.toISOString() ?? new Date().toISOString(),
+        rows,
+      };
+    } catch (err: any) {
+      this.logger.warn(`[Cashflow] loadDatasetFromDB skipped: ${err.message}`);
+      return null;
+    }
+  }
+
   private resolvePeriod(year?: number, month?: number): string {
     if (year && month) {
       return `${year}-${String(month).padStart(2, '0')}`;
@@ -348,93 +452,116 @@ Câu hỏi: ${question}`;
     fs.writeFileSync(this.registryFile(), JSON.stringify(next, null, 2), 'utf8');
   }
 
+  private normalizeVi(s: string): string {
+    return (s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+  }
+
+  private shouldUseDeterministicAnswer(normalizedQuestion: string): boolean {
+    // Các intent phổ biến có thể trả lời chính xác bằng rule-based từ dữ liệu đã có.
+    return /tong thu|tong chi|dong tien|dong tien rong|chi tiet|breakdown|co cau|lai lo|tham hut|chenh lech/.test(
+      normalizedQuestion,
+    );
+  }
+
+  private isUnavailableLikeText(text: string): boolean {
+    const normalized = this.normalizeVi(text);
+    if (!normalized) return true;
+
+    return (
+      normalized.includes('tam thoi khong kha dung') ||
+      normalized.includes('all llm providers failed') ||
+      normalized.includes('all llm providers unavailable') ||
+      normalized.includes('rate limit') ||
+      normalized.includes('quota') ||
+      normalized.includes('provider unavailable')
+    );
+  }
+
   private buildRuleBasedCashflowAnswer(
     dataset: CashflowQaDataset,
     question: string,
     includeNotice = false,
   ): string {
-    const incomeKeywords = [
-      'thu dự án',
-      'thu dau tu tai chinh',
-      'thu đầu tư tài chính',
-      'thu dau tu r&d',
-      'thu đầu tư r&d',
-      'thu khác',
-      'thu khac',
-    ];
-    const expenseKeywords = [
-      'lương dự án',
-      'luong du an',
-      'quản lý văn phòng',
-      'quan ly van phong',
-      'chi phí đảm bảo chất lượng',
-      'chi phi dam bao chat luong',
-      'hành chính',
-      'hanh chinh',
-      'kế toán/tài chính',
-      'ke toan/tai chinh',
-      'sales',
-      'marketing',
-      'hạ tầng it',
-      'ha tang it',
-    ];
-
-    const normalize = (v: string) =>
-      v
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim();
-
-    const pickValue = (values: number[]) => {
-      const nz = values.find((v) => Math.abs(v) > 0.0001);
-      if (nz !== undefined) return nz;
-      return values.length > 0 ? values[0] : 0;
-    };
-
-    let totalIncome = 0;
-    let totalExpense = 0;
-
-    for (const row of dataset.rows) {
-      const label = normalize(row.label);
-      const value = pickValue(row.values);
-
-      if (incomeKeywords.some((k) => label.includes(normalize(k)))) {
-        totalIncome += value;
-        continue;
-      }
-
-      if (expenseKeywords.some((k) => label.includes(normalize(k)))) {
-        totalExpense += value;
-      }
-    }
-
-    const net = totalIncome - totalExpense;
-    const q = normalize(question);
-    const askOnlyIncome = q.includes('tong thu') && !q.includes('chi');
-    const askOnlyExpense = q.includes('tong chi') && !q.includes('thu');
-
-    const formatVnd = (v: number) =>
-      `${Math.round(v).toLocaleString('vi-VN')} VND`;
+    const formatVnd = (v: number) => `${Math.round(v).toLocaleString('vi-VN')} VND`;
+    const norm = (s: string) =>
+      s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
     const header = includeNotice
       ? `Q&A Cashflow ${dataset.period}\n(Hệ thống tạm dùng fallback vì LLM đang gián đoạn)\n`
       : `Q&A Cashflow ${dataset.period}\n`;
 
-    if (askOnlyIncome) {
-      return `${header}Tổng thu kỳ ${dataset.period}: ${formatVnd(totalIncome)}.`;
+    // Phân loại rows — dùng category đã lưu hoặc fallback sang keyword matching
+    const categorize = (row: CashflowRow): CashflowCategory => {
+      if (row.category && row.category !== 'other') return row.category;
+      return this.categorizeRow(row.label);
+    };
+
+    const incomeRows = dataset.rows.filter((r) => categorize(r) === 'income');
+    const expenseRows = dataset.rows.filter((r) => categorize(r) === 'expense');
+    const getPrimary = (r: CashflowRow) =>
+      r.primaryValue ?? r.values.find((v) => Math.abs(v) > 0.0001) ?? r.values[0] ?? 0;
+
+    const totalIncome = incomeRows.reduce((s, r) => s + getPrimary(r), 0);
+    const totalExpense = expenseRows.reduce((s, r) => s + getPrimary(r), 0);
+    const net = totalIncome - totalExpense;
+
+    const q = norm(question);
+    const wantsDetail = /chi tiet|tung nhom|tung hang muc|phan loai|breakdown|co cau|chia theo/.test(q);
+    const askOnlyIncome = q.includes('tong thu') && !q.includes('chi');
+    const askOnlyExpense = q.includes('tong chi') && !q.includes('thu');
+
+    // Chỉ hỏi tổng thu
+    if (askOnlyIncome && !wantsDetail) {
+      return `${header}📥 Tổng thu kỳ ${dataset.period}: **${formatVnd(totalIncome)}**`;
     }
 
-    if (askOnlyExpense) {
-      return `${header}Tổng chi kỳ ${dataset.period}: ${formatVnd(totalExpense)}.`;
+    // Chỉ hỏi tổng chi
+    if (askOnlyExpense && !wantsDetail) {
+      return `${header}📤 Tổng chi kỳ ${dataset.period}: **${formatVnd(totalExpense)}**`;
     }
 
+    // Hỏi chi tiết từng nhóm
+    if (wantsDetail || (incomeRows.length > 0 && expenseRows.length > 0)) {
+      let msg = header;
+
+      if (incomeRows.length > 0) {
+        msg += `\n📥 THU (${formatVnd(totalIncome)}):\n`;
+        incomeRows.forEach((r) => {
+          const v = getPrimary(r);
+          if (Math.abs(v) > 0.0001) {
+            msg += `  • ${r.label}: ${formatVnd(v)}\n`;
+          }
+        });
+      }
+
+      if (expenseRows.length > 0) {
+        msg += `\n📤 CHI (${formatVnd(totalExpense)}):\n`;
+        expenseRows.forEach((r) => {
+          const v = getPrimary(r);
+          if (Math.abs(v) > 0.0001) {
+            msg += `  • ${r.label}: ${formatVnd(v)}\n`;
+          }
+        });
+      }
+
+      const netIcon = net >= 0 ? '🟢' : '🔴';
+      msg += `\n${netIcon} Dòng tiền ròng: ${formatVnd(net)}`;
+      if (net < 0) msg += ' — âm, cần kiểm tra!';
+      return msg;
+    }
+
+    // Summary mặc định
+    const netIcon = net >= 0 ? '🟢' : '🔴';
     return (
       `${header}` +
-      `• Tổng thu: ${formatVnd(totalIncome)}\n` +
-      `• Tổng chi: ${formatVnd(totalExpense)}\n` +
-      `• Dòng tiền ròng: ${formatVnd(net)}\n` +
-      `Gợi ý: Nếu cần chi tiết theo hạng mục, hỏi thêm "chi tiết từng nhóm thu/chi kỳ ${dataset.period}".`
+      `• 📥 Tổng thu: ${formatVnd(totalIncome)}\n` +
+      `• 📤 Tổng chi: ${formatVnd(totalExpense)}\n` +
+      `• ${netIcon} Dòng tiền ròng: ${formatVnd(net)}\n` +
+      `Gợi ý: Hỏi "chi tiết từng nhóm thu/chi kỳ ${dataset.period}" để xem breakdown đầy đủ.`
     );
   }
 }

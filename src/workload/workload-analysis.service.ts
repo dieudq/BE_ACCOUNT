@@ -81,23 +81,34 @@ export class WorkloadAnalysisService {
       ? emp.selfLearningHours > prevEmp.selfLearningHours ? '📈' : '📉'
       : '';
 
-    const prompt = `Dữ liệu nhân sự:
-${contextSection}Tên: ${emp.employeeName} | ${month}/${year}
-Log dự án: ${emp.projectHours.toFixed(1)}h (${emp.projectPercent.toFixed(1)}%) | Self-learning: ${emp.selfLearningHours.toFixed(1)}h — ${severityLabel}
+    const billableRate = emp.standardHours > 0
+      ? ((emp.projectHours / emp.standardHours) * 100).toFixed(1)
+      : '0';
+    const nonBillableHours = emp.selfLearningHours.toFixed(1);
+
+    const prompt = `Dữ liệu nhân sự (dùng để làm bảng công/tính lương):
+${contextSection}Tên: ${emp.employeeName} | Tháng ${month}/${year}
+Giờ chuẩn: ${emp.standardHours.toFixed(1)}h | Log dự án: ${emp.projectHours.toFixed(1)}h (${billableRate}%) | Chưa phân bổ: ${nonBillableHours}h — ${severityLabel}
 ${trendSection}
-Dự án: ${projectBreakdown}
+Phân bổ theo dự án:
+${projectBreakdown}
 
-Viết phân tích NGẮN GỌN theo đúng format sau (dùng emoji, tối đa 80 từ):
+Viết phân tích ngắn gọn (tối đa 120 từ, vibe chill thân thiện, hài hước nhẹ, emoji phong phú) theo format:
 
-🔴/🟡/🟢 Tình trạng: [1 câu tóm tắt mức độ]
-${trendArrow} Xu hướng: [so tháng trước, 1 câu]
-💡 Nguyên nhân: [1-2 bullet ngắn]
-✅ Hành động: [1-2 bullet cụ thể cho HR/Manager]`;
+🔴/🟡/🟢 Tình trạng bảng công: [1 câu — đánh giá mức độ hoàn chỉnh của dữ liệu để tính lương]
+${trendArrow} Xu hướng: [so tháng trước, nhận xét vui nếu phù hợp]
+💡 Lưu ý: [1-2 bullet về điểm cần chú ý khi hạch toán — giờ chưa phân bổ, dự án chiếm tỉ trọng cao,...]
+✅ Cho kế toán: [1 bullet — về bảng công, hạch toán, xác nhận giờ trước chốt lương]
+👥 Cho HR/Manager: [1 bullet — về phân công, nhắc log Jira, hoặc review assignment]`;
 
-    const systemPrompt = `Chuyên gia HR workload. Trả lời tiếng Việt, súc tích, dùng emoji, đúng format được yêu cầu. Không thêm mở đầu/kết luận dài dòng.`;
+    const systemPrompt = `Bạn là assistant kế toán - nhân sự thân thiện. Bot phục vụ kế toán làm bảng công tính lương (ưu tiên), nhưng cũng hỗ trợ HR/Manager theo dõi nhân sự. Luôn nhấn mạnh thông tin phân bổ giờ theo dự án và mức độ đầy đủ của dữ liệu. Viết tiếng Việt tự nhiên như đang nhắn tin với đồng nghiệp — chill, hài hước nhẹ, emoji đa dạng. Không nói chung chung kiểu báo cáo hành chính.`;
 
     try {
       const analysis = await this.llm.generateResponse(prompt, systemPrompt);
+      if (this.isUnavailableResponse(analysis)) {
+        this.logger.warn('LLM returned unavailable/rate-limit response, using rule-based fallback');
+        return this.ruleBasedAnalysis(emp, prevEmp, month, year, prevMonth, prevYear);
+      }
       return `🔍 ${emp.employeeName} — Tháng ${month}/${year}\n\n${analysis}`;
     } catch (error: any) {
       this.logger.warn(`LLM analysis failed, using rule-based fallback: ${error.message}`);
@@ -162,23 +173,26 @@ ${trendArrow} Xu hướng: [so tháng trước, 1 câu]
 
     const healthIcon = report.alerts.length === 0 ? '🟢' : critical.length > 0 ? '🔴' : '🟡';
 
-    const prompt = `Dữ liệu team tháng ${month}/${year}:
-${contextSection}👥 ${report.rows.length} nhân sự | 🟢 ${healthy.length} bình thường | 🟡 ${approaching.length} tiệm cận | 🔴 ${exceeded.length + critical.length} vượt ngưỡng
-📊 Avg log: ${avgLog.toFixed(1)}h | Avg SL: ${avgSL.toFixed(1)}h${trendNote ? ' | ' + trendNote : ''}
-Vượt ngưỡng: ${alertDetails}
+    const prompt = `Dữ liệu workload team tháng ${month}/${year} (kế toán dùng để làm bảng công):
+${contextSection}👥 ${report.rows.length} nhân sự | 🟢 ${healthy.length} đủ dữ liệu | 🟡 ${approaching.length} cần bổ sung | 🔴 ${exceeded.length + critical.length} thiếu giờ log nghiêm trọng
+📊 Avg giờ dự án: ${avgLog.toFixed(1)}h | Avg giờ chưa phân bổ: ${avgSL.toFixed(1)}h${trendNote ? ' | ' + trendNote : ''}
+Nhân sự giờ chưa phân bổ cao: ${alertDetails}
 
-Viết nhận xét NGẮN GỌN theo format sau (emoji, tối đa 80 từ):
+Viết nhận xét tổng quan (tối đa 120 từ, tone chill thân thiện, hài hước nhẹ, emoji đa dạng) theo format:
 
-${healthIcon} Sức khỏe: [Tốt/Cần chú ý/Đáng lo ngại — 1 câu lý do]
-📈/📉 Xu hướng: [so tháng trước, 1 câu]
-🎯 Ưu tiên:
-• [hành động 1]
-• [hành động 2]`;
+${healthIcon} Tình trạng bảng công: [1 câu đánh giá mức độ sẵn sàng để chốt lương tháng này]
+📈/📉 Xu hướng: [so tháng trước, bình luận vui nếu phù hợp]
+✅ Cho kế toán: [1 bullet — mức độ sẵn sàng chốt bảng công, ai cần xác nhận thêm]
+👥 Cho HR/Manager: [1 bullet — về phân công dự án hoặc nhắc log Jira]`;
 
-    const systemPrompt = `Chuyên gia HR workload. Trả lời tiếng Việt, súc tích, dùng emoji, đúng format. Không thêm lời mở đầu dài dòng.`;
+    const systemPrompt = `Bạn là assistant kế toán - nhân sự thân thiện. Dữ liệu workload phục vụ kế toán làm bảng công tính lương (ưu tiên), đồng thời hỗ trợ HR/Manager theo dõi nhân sự. Nhận xét phải thiết thực cho cả 2 đối tượng. Viết tiếng Việt tự nhiên như đang nhắn tin, chill, hài hước nhẹ, emoji sáng tạo. Không nói chung chung.`;
 
     try {
       const insights = await this.llm.generateResponse(prompt, systemPrompt);
+      if (this.isUnavailableResponse(insights)) {
+        this.logger.warn('LLM returned unavailable/rate-limit response, using team rule-based fallback');
+        return this.ruleBasedTeamInsights(report, month, year);
+      }
       return `📊 Team Insights — Tháng ${month}/${year}\n\n${insights}`;
     } catch (error: any) {
       this.logger.warn(`LLM insights failed, using rule-based fallback: ${error.message}`);
@@ -197,52 +211,105 @@ ${healthIcon} Sức khỏe: [Tốt/Cần chú ý/Đáng lo ngại — 1 câu lý
     prevYear: number,
   ): string {
     const statusIcon = emp.selfLearningHours > 50 ? '🔴' : emp.selfLearningHours > 30 ? '🟠' : emp.selfLearningHours > 21 ? '🟡' : '🟢';
+    const billableRate = emp.standardHours > 0
+      ? ((emp.projectHours / emp.standardHours) * 100).toFixed(0)
+      : '0';
+
     let msg = `🔍 ${emp.employeeName} — Tháng ${month}/${year}\n\n`;
-    msg += `${statusIcon} Log: ${emp.projectHours.toFixed(1)}h (${emp.projectPercent.toFixed(0)}%) | SL: ${emp.selfLearningHours.toFixed(1)}h (${emp.selfLearningPercent.toFixed(0)}%)\n`;
+    msg += `${statusIcon} Giờ chuẩn: ${emp.standardHours.toFixed(0)}h | Log dự án: ${emp.projectHours.toFixed(1)}h (${billableRate}%) | Chưa phân bổ: ${emp.selfLearningHours.toFixed(1)}h\n`;
+
+    if (emp.projects.length > 0) {
+      msg += `\n📂 Phân bổ dự án:\n`;
+      emp.projects.forEach((p) => {
+        msg += `  • ${p.projectName || p.projectCode}: ${p.hours.toFixed(1)}h (${p.percent.toFixed(0)}%)\n`;
+      });
+    }
 
     if (prevEmp) {
       const diff = emp.selfLearningHours - prevEmp.selfLearningHours;
       const arrow = diff > 0 ? '📈' : '📉';
-      msg += `${arrow} vs T${prevMonth}/${prevYear}: SL ${diff > 0 ? '+' : ''}${diff.toFixed(1)}h\n`;
+      const comment = diff > 0 ? 'giờ chưa phân bổ tăng thêm 😬' : 'đã cải thiện hơn tháng trước 😮‍💨';
+      msg += `\n${arrow} So T${prevMonth}/${prevYear}: ${diff > 0 ? '+' : ''}${diff.toFixed(1)}h — ${comment}\n`;
     }
 
     msg += '\n';
 
     if (emp.selfLearningHours > 30) {
-      msg += `💡 Nguyên nhân:\n`;
+      msg += `💡 Lưu ý khi làm bảng công:\n`;
       if (emp.projects.length === 0) {
-        msg += `• Không có dự án nào được log\n`;
+        msg += `• Chưa có giờ log dự án nào cả 😳 — không thể phân bổ chi phí!\n`;
+        msg += `• Cần nhắc nhân sự bổ sung Jira trước khi chốt lương\n`;
       } else if (emp.projectHours < emp.standardHours * 0.5) {
-        msg += `• Giờ log chỉ ${emp.projectPercent.toFixed(0)}% — thấp hơn chuẩn\n`;
+        msg += `• Chỉ phân bổ được ${billableRate}% giờ vào dự án — ${emp.selfLearningHours.toFixed(1)}h còn lại không có project\n`;
+        msg += `• Xác nhận với nhân sự trước khi hạch toán\n`;
       } else {
-        msg += `• Phân bổ dự án chưa tối ưu\n`;
+        msg += `• Phần chưa phân bổ (${emp.selfLearningHours.toFixed(1)}h) hơi nhiều so chuẩn\n`;
       }
-      msg += `\n✅ Hành động:\n• Kiểm tra phân công & nhắc log Jira\n• Review lại assignment tuần này`;
+      msg += `\n✅ Cho kế toán: Chưa nên chốt bảng công — cần bổ sung giờ log trước\n`;
+      msg += `👥 Cho HR/Manager: Nhắc nhân sự log Jira & xác nhận lại assignment với PM`;
     } else if (emp.selfLearningHours > 21) {
-      msg += `⚠️ Tiệm cận ngưỡng 30h — cần theo dõi thêm.`;
+      msg += `⚠️ Giờ chưa phân bổ đang tiệm cận 30h — để mắt thêm chút nhé 😅\n`;
+      msg += `✅ Cho kế toán: Tạm ổn, nhưng nên xác nhận lại trước khi chốt\n`;
+      msg += `👥 Cho HR/Manager: Theo dõi thêm, tránh để vọt qua ngưỡng cuối tháng`;
     } else {
-      msg += `✅ Workload bình thường.`;
+      msg += `✅ Cho kế toán: Dữ liệu đủ, sẵn sàng làm bảng công tháng này 🎉\n`;
+      msg += `👥 Cho HR/Manager: Workload trong ngưỡng an toàn, không cần action gì thêm`;
     }
 
     return msg;
   }
 
   private ruleBasedTeamInsights(report: any, month: number, year: number): string {
-    const avgSL = report.rows.reduce((s: number, r: any) => s + r.selfLearningHours, 0) / report.rows.length;
-    const critical = report.rows.filter((r: any) => r.selfLearningHours > 50).length;
+    const rows: any[] = report.rows;
+    const avgSL = rows.reduce((s: number, r: any) => s + r.selfLearningHours, 0) / rows.length;
+    const avgLog = rows.reduce((s: number, r: any) => s + r.projectHours, 0) / rows.length;
+    const critical = rows.filter((r: any) => r.selfLearningHours > 50).length;
+    const noLog = rows.filter((r: any) => r.projectHours === 0).length;
     const healthIcon = report.alerts.length === 0 ? '🟢' : critical > 0 ? '🔴' : '🟡';
 
-    let msg = `📊 Team Insights — Tháng ${month}/${year}\n\n`;
-    msg += `${healthIcon} ${report.rows.length} nhân sự | Avg SL: ${avgSL.toFixed(1)}h | 🔴 Vượt ngưỡng: ${report.alerts.length}`;
-    if (critical > 0) msg += ` (${critical} rất cao >50h)`;
-    msg += '\n\n';
+    const statusText = report.alerts.length === 0
+      ? 'Bảng công tháng này trông ổn — sẵn sàng chốt lương 🎉'
+      : critical > 0
+        ? `Có ${critical} bạn chưa phân bổ được giờ — chưa nên chốt lương vội 😬`
+        : `Cần xác nhận thêm ${report.alerts.length} bạn trước khi chốt bảng công 👀`;
 
+    let msg = `📊 Team Insights — Tháng ${month}/${year}\n\n`;
+    msg += `${healthIcon} Tình trạng bảng công: ${statusText}\n`;
+    msg += `\n📋 Tổng quan:\n`;
+    msg += `  • ${rows.length} nhân sự | Avg log dự án: ${avgLog.toFixed(1)}h | Avg chưa phân bổ: ${avgSL.toFixed(1)}h\n`;
+    msg += `  • 🔴 Giờ chưa phân bổ cao (>30h): ${report.alerts.length} bạn\n`;
+    if (noLog > 0) msg += `  • ⚠️ Chưa log dự án nào: ${noLog} bạn — không hạch toán được chi phí!\n`;
+    if (critical > 0) msg += `  • 🚨 Rất nghiêm trọng (>50h chưa phân bổ): ${critical} bạn\n`;
+
+    msg += `\n✅ Cho kế toán:\n`;
     if (report.alerts.length > 0) {
-      msg += `🎯 Ưu tiên:\n• Review phân công cho ${report.alerts.length} nhân sự vượt ngưỡng\n• Nhắc log Jira đầy đủ trước cuối tháng`;
+      msg += `• Chưa nên chốt — cần ${report.alerts.length} bạn bổ sung giờ log trước ngày chốt công\n`;
+      if (noLog > 0) msg += `• Ưu tiên ${noLog} bạn chưa có giờ dự án nào (không hạch toán được)\n`;
     } else {
-      msg += `✅ Team trong ngưỡng an toàn.`;
+      msg += `• Dữ liệu đủ, sẵn sàng làm bảng công tháng này 🌱\n`;
+    }
+    msg += `\n👥 Cho HR/Manager:\n`;
+    if (report.alerts.length > 0) {
+      msg += `• Nhắc nhở nhân sự log Jira đầy đủ trước cuối tháng\n`;
+      if (critical > 0) msg += `• Xem xét lại phân công cho ${critical} bạn >50h chưa phân bổ được\n`;
+    } else {
+      msg += `• Workload team trong ngưỡng ổn, không cần action khẩn 👍\n`;
     }
 
     return msg;
+  }
+
+  private isUnavailableResponse(text: string): boolean {
+    const normalized = (text || '').toLowerCase();
+    if (!normalized) return true;
+
+    return (
+      normalized.includes('tam thoi khong kha dung') ||
+      normalized.includes('tạm thời không khả dụng') ||
+      normalized.includes('all llm providers unavailable') ||
+      normalized.includes('rate limit') ||
+      normalized.includes('quota exceeded') ||
+      normalized.includes('provider unavailable')
+    );
   }
 }

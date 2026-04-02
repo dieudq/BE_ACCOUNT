@@ -454,3 +454,20 @@ model WorkloadReport {
 
   @@index([year, month])
 }
+
+// Lưu từng dòng cashflow để fallback Q&A không cần đọc file Excel
+model CashflowEntry {
+  id           String   @id @default(cuid())
+  period       String   @db.VarChar(10)   // "2026-01"
+  rowNum       Int
+  label        String
+  category     String   @db.VarChar(20) @default("other") // "income" | "expense" | "total" | "other"
+  primaryValue Float    @default(0)       // giá trị đại diện (first non-zero)
+  allValues    Json     @default("[]")    // mảng số nguyên gốc từ file
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([period, rowNum])
+  @@index([period, category])
+  @@map("cashflow_entries")
+}
