@@ -5,16 +5,92 @@ import * as fs from 'fs';
 import * as ExcelJS from 'exceljs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ERPClientService } from '../common/services/erp-client.service';
+
+// Cache context theo userId: lưu data đã fetch để dùng cho follow-up
+interface UserSession {
+  lastContext: string;      // raw data context từ lần trước
+  lastIntent: string;
+  lastMonth: number;
+  lastYear: number;
+  updatedAt: number;
+}
 
 @Injectable()
 export class GroqService {
   private groq: Groq;
   private cachedCashflowData: any = null;
+  private userSessions = new Map<string, UserSession>();
+  private readonly SESSION_TTL = 15 * 60 * 1000; // 15 phút
 
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    private erp: ERPClientService,
+  ) {
     this.groq = new Groq({
       apiKey: process.env.GROQ_API_KEY,
     });
+  }
+
+  private getSession(userId: string): UserSession | null {
+    const s = this.userSessions.get(userId);
+    if (!s) return null;
+    if (Date.now() - s.updatedAt > this.SESSION_TTL) {
+      this.userSessions.delete(userId);
+      return null;
+    }
+    return s;
+  }
+
+  private saveSession(userId: string, context: string, intent: string, month: number, year: number) {
+    this.userSessions.set(userId, { lastContext: context, lastIntent: intent, lastMonth: month, lastYear: year, updatedAt: Date.now() });
+  }
+
+  /**
+   * Detect multiple months trong câu hỏi: "tháng 1,2,3" hoặc "tháng 1 đến 3"
+   */
+  private extractMultipleMonths(message: string): Array<{ month: number; year: number }> | null {
+    const now = new Date();
+    const yearMatch = message.match(/(?:năm\s*)?(\d{4})/);
+    const year = yearMatch ? parseInt(yearMatch[1]) : now.getFullYear();
+
+    // "tháng 1,2,3,4" hoặc "tháng 1, 2, 3"
+    const listMatch = message.match(/tháng\s*([\d\s,và]+)/i);
+    if (listMatch) {
+      const months = listMatch[1].split(/[,\s và]+/).map(Number).filter(n => n >= 1 && n <= 12);
+      if (months.length > 1) return months.map(m => ({ month: m, year }));
+    }
+
+    // "tháng 1 đến 4" hoặc "tháng 1-4"
+    const rangeMatch = message.match(/tháng\s*(\d+)\s*(?:đến|tới|-)\s*(\d+)/i);
+    if (rangeMatch) {
+      const from = parseInt(rangeMatch[1]);
+      const to = parseInt(rangeMatch[2]);
+      if (from >= 1 && to <= 12 && from <= to) {
+        return Array.from({ length: to - from + 1 }, (_, i) => ({ month: from + i, year }));
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Detect nếu đây là follow-up question dựa vào context trước
+   */
+  private isFollowUp(message: string): boolean {
+    const lowerMsg = message.toLowerCase();
+    return (
+      lowerMsg.includes('ai cao nhất') || lowerMsg.includes('ai thấp nhất') ||
+      lowerMsg.includes('trung bình') || lowerMsg.includes('tổng cộng') ||
+      lowerMsg.includes('trong số đó') || lowerMsg.includes('còn ai') ||
+      lowerMsg.includes('đó là') || lowerMsg.includes('những người') ||
+      // Action follow-up: thực hiện hành động dựa trên kết quả vừa hiện
+      lowerMsg.includes('gửi cảnh báo') || lowerMsg.includes('nhắn tin') ||
+      lowerMsg.includes('notify') || lowerMsg.includes('thông báo cho') ||
+      lowerMsg.includes('người đó') || lowerMsg.includes('người này') ||
+      /^(và |còn |thêm |vậy |thế )/.test(lowerMsg) ||
+      (lowerMsg.length < 40 && !lowerMsg.includes('tháng') && !lowerMsg.includes('phiếu'))
+    );
   }
 
   /**
@@ -116,12 +192,73 @@ export class GroqService {
     return { value: row[colIdx], rowLabel: searchedRow, colName: foundCol[1] };
   }
 
+  /**
+   * Extract month/year từ message người dùng.
+   * Ví dụ: "tháng 1", "tháng 01", "01/2026", "January 2026"
+   */
+  private extractMonthYear(message: string): { month: number; year: number } {
+    const now = new Date();
+    const lowerMsg = message.toLowerCase();
+
+    const monthMatch = lowerMsg.match(/tháng\s*(\d{1,2})/);
+    const yearMatch = lowerMsg.match(/(?:năm\s*)?(\d{4})/);
+
+    const month = monthMatch ? parseInt(monthMatch[1], 10) : now.getMonth() + 1;
+    const year = yearMatch ? parseInt(yearMatch[1], 10) : now.getFullYear();
+
+    // Sanity check
+    return {
+      month: month >= 1 && month <= 12 ? month : now.getMonth() + 1,
+      year: year >= 2020 && year <= 2100 ? year : now.getFullYear(),
+    };
+  }
+
   async chat(message: string, userId?: string): Promise<string> {
     try {
-      // 1. Phân tích Ý định (Intent Recognition) để lấy đúng ngữ cảnh
+      const sessionId = userId || 'anonymous';
+
+      // 1. Detect intent (không block off_topic cứng - LLM tự xử lý)
       const intent = await this.detectIntent(message);
+
+      // 2. Follow-up detection — ưu tiên session context khi phù hợp
+      const session = this.getSession(sessionId);
+      const { month, year } = this.extractMonthYear(message);
+
+      if (session) {
+        const sameTimePeriod = session.lastMonth === month && session.lastYear === year;
+
+        // 2a. Explicit follow-up keywords
+        if (this.isFollowUp(message)) {
+          return await this.callLLM(message, session.lastContext, intent, session.lastMonth, session.lastYear);
+        }
+
+        // 2b. Hỏi cùng kỳ tháng + cùng nhóm intent (workload/hours/ranking hoặc finance)
+        const WORKLOAD_FAMILY = new Set(['workload', 'hours', 'ranking', 'employees', 'general']);
+        const FINANCE_FAMILY = new Set(['vouchers', 'cashflow', 'financial', 'general']);
+        const sameFamily =
+          (WORKLOAD_FAMILY.has(session.lastIntent) && WORKLOAD_FAMILY.has(intent)) ||
+          (FINANCE_FAMILY.has(session.lastIntent) && FINANCE_FAMILY.has(intent));
+
+        if (sameTimePeriod && sameFamily) {
+          return await this.callLLM(message, session.lastContext, intent, session.lastMonth, session.lastYear);
+        }
+
+        // 2c. Hỏi về nhân viên cụ thể có tên trong session context
+        const employeeNameForCheck = await this.extractEmployeeName(message);
+        if (employeeNameForCheck && session.lastContext.includes(employeeNameForCheck)) {
+          return await this.callLLM(message, session.lastContext, intent, session.lastMonth, session.lastYear);
+        }
+      }
+
+      // 3. Multi-month query: "tháng 1,2,3,4"
+      const multiMonths = this.extractMultipleMonths(message);
+      if (multiMonths && multiMonths.length > 1) {
+        return await this.handleMultiMonthQuery(message, intent, multiMonths, sessionId);
+      }
+
+      // 4. Single query bình thường
       const employeeName = await this.extractEmployeeName(message);
-      let context = await this.getDynamicContext(intent, userId, employeeName);
+      let context = await this.getDynamicContext(intent, userId, employeeName, month, year);
 
       // Escape context để tránh lỗi Markdown
       context = this.toPlainText(context);
@@ -134,20 +271,16 @@ export class GroqService {
         messages: [
           {
             role: 'system',
-            content: `Bạn là Trợ lý Đa năng thông minh của công ty Twendee. 
-            Nhiệm vụ của bạn là hiểu ý định người dùng và trả lời dựa trên dữ liệu hệ thống được cung cấp.
+            content: `Bạn là trợ lý kế toán và HR của công ty Twendee. Chỉ trả lời các câu hỏi liên quan đến: kế toán, phiếu chi, workload nhân sự, giờ làm việc, nghỉ phép, dự án nội bộ.
 
-            NGỮ CẢNH DỮ LIỆU ĐƯỢC CUNG CẤP (${intent.toUpperCase()}):
-            ${context}
-            
-            QUY TẮC TRẢ LỜI:
-            1. CHI TIẾT & CỤ THỂ: Nếu dữ liệu có sẵn, hãy trả lời chi tiết đến từng con số, tên người, mục chi tiết. Không tóm tắt quá mức.
-            2. PHÂN TÍCH NHÂN VIÊN: Nếu hỏi về 1 người cụ thể, hãy liệt kê TOÀN BỘ thông tin: giờ làm, dự án, phép còn lại, mức độ rủi ro, lịch sử gần đây.
-            3. TRÍCH DẪN NGUỒN: Nói rõ dữ liệu lấy từ DB hay file Excel.
-            4. SO SÁNH & XU HƯỚNG: Nếu có nhiều tháng/người, hãy so sánh sự chênh lệch, tính % tăng/giảm, nhận xét xu hướng.
-            5. TRÌNH BÀY: Dùng tiếng Việt, dùng dấu gạch ngang (-) để liệt kê. Số tiền VNĐ (ví dụ: 1.000.000 VND).
-            6. TỰ TIN & ĐỘC LẬP: Trả lời trực tiếp dựa trên dữ liệu. Nếu không thấy dữ liệu, thông báo rõ.
-            7. MỌI CHI TIẾT: Nếu người dùng hỏi "kể hết", hãy kể từng dòng, từng số liệu, không bỏ sót.`,
+DỮ LIỆU HỆ THỐNG (${intent.toUpperCase()}${['workload', 'hours', 'vouchers', 'financial', 'cashflow'].includes(intent) ? ` - tháng ${month}/${year}` : ''}):
+${context}
+
+HƯỚNG DẪN:
+- Ưu tiên trả lời dựa trên dữ liệu trên. Nếu câu hỏi yêu cầu tính toán (max, min, trung bình), hãy tự tính từ dữ liệu đã có.
+- Nếu câu hỏi ngoài lề (không liên quan dữ liệu), vẫn trả lời ngắn gọn và tự nhiên như một trợ lý thân thiện.
+- Không bịa số liệu. Nếu thiếu data → nói rõ.
+- Trả lời tiếng Việt, súc tích.`,
           },
           {
             role: 'user',
@@ -159,21 +292,77 @@ export class GroqService {
 
       let response = completion.choices[0]?.message?.content || 'Xin loi, toi khong the xu ly yeu cau nay.';
 
-      // Convert to plain text để tránh lỗi Markdown
       response = this.toPlainText(response);
-
-      // Loại bỏ tất cả định dạng tiền tệ (VND, VNĐ)
       response = this.removeCurrencyFormatting(response);
+
+      // Lưu session để dùng cho follow-up
+      this.saveSession(sessionId, context, intent, month, year);
 
       return response;
     } catch (error) {
       console.error('Groq Error:', error);
-      return `Loi he thong phan tich: ${error.message}`;
+      return `Lỗi hệ thống: ${(error as Error).message}`;
     }
   }
 
+  /**
+   * Gọi LLM với context đã có sẵn (dùng cho follow-up và multi-month)
+   */
+  private async callLLM(message: string, context: string, intent: string, month: number, year: number): Promise<string> {
+    const completion = await this.groq.chat.completions.create({
+      messages: [
+        {
+          role: 'system',
+          content: `Bạn là trợ lý của công ty Twendee. Trả lời dựa trên dữ liệu sau:\n\n${context}\n\nTrả lời ngắn gọn, bằng tiếng Việt.`,
+        },
+        { role: 'user', content: message },
+      ],
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 800,
+    });
+
+    let response = completion.choices[0]?.message?.content || '';
+    return this.toPlainText(this.removeCurrencyFormatting(response));
+  }
+
+  /**
+   * Xử lý query nhiều tháng: fetch tất cả rồi tổng hợp
+   */
+  private async handleMultiMonthQuery(
+    message: string,
+    intent: string,
+    months: Array<{ month: number; year: number }>,
+    sessionId: string,
+  ): Promise<string> {
+    const results = await Promise.allSettled(
+      months.map(async ({ month, year }) => {
+        const ctx = await this.getDynamicContext(intent, sessionId, null, month, year);
+        return { month, year, ctx };
+      }),
+    );
+
+    // Gộp tất cả context lại
+    const combinedContext = results
+      .map((r) => {
+        if (r.status === 'fulfilled') {
+          return `=== Tháng ${r.value.month}/${r.value.year} ===\n${r.value.ctx}`;
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n\n');
+
+    // Lưu session với combined context
+    const lastMonth = months[months.length - 1];
+    this.saveSession(sessionId, combinedContext, intent, lastMonth.month, lastMonth.year);
+
+    return await this.callLLM(message, combinedContext, intent, lastMonth.month, lastMonth.year);
+  }
+
   private async extractEmployeeName(message: string): Promise<string | null> {
-    // Tìm tên nhân viên trong message (hỏi về "nhân viên X", "ai", "tên", etc.)
+    // Từ nghi vấn/động từ — không phải tên người
+    const QUESTION_STARTERS = ['nào', 'ai', 'gì', 'bị', 'có', 'không', 'là', 'được', 'những', 'các', 'mấy', 'sao', 'tại'];
+
     const patterns = [
       /(?:nhân viên|anh|chị|ông|bà|Mr|Ms|Mrs)\s+([A-Za-zÀ-ỿ\s]+?)(?:\s+(?:có|tháng|năm|như|nào|gì|là|được)|\?|$)/i,
       /(?:của|thuộc)\s+([A-Za-zÀ-ỿ\s]+?)(?:\s+(?:có|tháng|năm)|\?|$)/i,
@@ -183,7 +372,12 @@ export class GroqService {
     for (const pattern of patterns) {
       const match = message.match(pattern);
       if (match && match[1]) {
-        return match[1].trim();
+        const captured = match[1].trim();
+        const firstWord = captured.split(/\s+/)[0].toLowerCase();
+        // Bỏ qua nếu bắt đầu bằng từ nghi vấn hoặc quá dài (không phải tên thật)
+        if (QUESTION_STARTERS.includes(firstWord)) continue;
+        if (captured.split(/\s+/).length > 5) continue;
+        return captured;
       }
     }
     return null;
@@ -260,28 +454,55 @@ export class GroqService {
       return 'system_overview';
     }
 
+    // 11. Intent: OFF_TOPIC - chỉ chặn các chủ đề RÕ RÀNG ngoài domain
+    // Cẩn thận: không chặn các câu hỏi về hệ thống, user, thống kê nội bộ
+    const isOffTopic = (
+      msg.includes('phim') || msg.includes('movie') || msg.includes('cinema') || msg.includes('rạp chiếu') ||
+      msg.includes('bóng đá') || msg.includes('thể thao') || msg.includes('sport') ||
+      msg.includes('thời tiết') || msg.includes('weather') ||
+      msg.includes('nhà hàng') || msg.includes('restaurant') ||
+      msg.includes('du lịch') || msg.includes('travel') || msg.includes('khách sạn') ||
+      msg.includes('mua sắm') || msg.includes('shopping') ||
+      msg.includes('nấu ăn') || msg.includes('recipe') ||
+      (msg.includes('game') && !msg.includes('game thủ') && !msg.includes('gaming')) ||
+      msg.includes('âm nhạc') || msg.includes('ca sĩ') || msg.includes('singer') ||
+      msg.includes('ca nhạc') || msg.includes('idol')
+    );
+    // Không chặn nếu có từ khóa nội bộ đi kèm
+    const hasInternalKeyword = msg.includes('nhân viên') || msg.includes('nhân sự') || msg.includes('dự án') ||
+      msg.includes('công ty') || msg.includes('twendee') || msg.includes('user') || msg.includes('telegram') ||
+      msg.includes('thống kê') || msg.includes('báo cáo') || msg.includes('hệ thống');
+    if (isOffTopic && !hasInternalKeyword) {
+      return 'off_topic' as any;
+    }
+
     return 'general';
   }
 
-  private async getDynamicContext(intent: string, userId?: string, employeeName?: string | null): Promise<string> {
+  private async getDynamicContext(
+    intent: string,
+    userId?: string,
+    employeeName?: string | null,
+    month?: number,
+    year?: number,
+  ): Promise<string> {
     // Nếu hỏi về nhân viên cụ thể, ưu tiên lấy context cá nhân
     if (employeeName && intent !== 'ranking') {
       return await this.getPersonalDetailContext(employeeName);
     }
 
-    // ...existing code...
     if (intent === 'ranking') {
       return await this.getRankingContext();
     }
 
     if (intent === 'cashflow') {
-      // Force load cashflow data
       await this.getLatestCashflowSummary();
       return this.cachedCashflowData?.summary || 'Không có dữ liệu Cashflow';
     }
-    
+
     if (intent === 'vouchers') {
-      return await this.getVouchersContext();
+      // Truyền month/year và message để extract department nếu có
+      return await this.getVouchersContext(month, year);
     }
 
     if (intent === 'projects') {
@@ -289,7 +510,8 @@ export class GroqService {
     }
 
     if (intent === 'workload') {
-      return await this.getWorkloadContext();
+      // Truyền month/year để lấy đúng tháng user hỏi
+      return await this.getWorkloadContext(month, year);
     }
 
     if (intent === 'employees') {
@@ -297,7 +519,8 @@ export class GroqService {
     }
 
     if (intent === 'hours') {
-      return await this.getEmployeeHoursContext();
+      // Truyền month/year để lấy đúng tháng user hỏi
+      return await this.getEmployeeHoursContext(month, year);
     }
 
     if (intent === 'leaves') {
@@ -316,81 +539,75 @@ export class GroqService {
       return await this.getSystemOverviewContext();
     }
 
-    // General context
     return await this.getSystemOverviewContext();
   }
 
   private async getRankingContext(): Promise<string> {
     try {
-      const [topWorkload, topHours, topLeaves, bottomWorkload, atRiskLeaves] = await Promise.all([
-        this.prisma.workloadReport.findMany({
-          orderBy: { hours: 'desc' },
-          take: 10,
-        }),
+      const now = new Date();
+      const curYear = now.getFullYear();
+      const curMonth = now.getMonth() + 1;
+
+      const [empHours, topLeaves] = await Promise.all([
         this.prisma.employeeHours.findMany({
-          where: {
-            year: new Date().getFullYear(),
-            month: new Date().getMonth() + 1,
-          },
+          where: { year: curYear, month: curMonth },
           orderBy: { loggedHours: 'desc' },
-          take: 10,
-          include: { user: true },
+          include: { user: { select: { name: true, department: true } } },
         }),
         this.prisma.leaveQuota.findMany({
-          where: { year: new Date().getFullYear() },
+          where: { year: curYear },
           orderBy: { usedDays: 'desc' },
           take: 10,
-          include: { user: true },
-        }),
-        this.prisma.workloadReport.findMany({
-          orderBy: { hours: 'asc' },
-          take: 5,
-        }),
-        this.prisma.leaveQuota.findMany({
-          where: { year: new Date().getFullYear() },
-          orderBy: { 
-            usedDays: 'desc' 
-          },
-          take: 5,
           include: { user: true },
         }),
       ]);
 
       let context = `\n${'='.repeat(70)}\n`;
-      context += `BẢNG XẾP HẠNG & SO SÁNH NHÂN VIÊN\n`;
+      context += `BẢNG XẾP HẠNG & SO SÁNH NHÂN VIÊN THÁNG ${curMonth}/${curYear}\n`;
       context += `${'='.repeat(70)}\n\n`;
 
-      // Top workload
-      context += `🔴 TOP 10 WORKLOAD CAO NHẤT (Self-Learning Hours):\n`;
-      topWorkload.forEach((w, i) => {
-        context += `  ${i + 1}. ${w.employeeName}: ${w.hours.toFixed(1)}h ${w.isAlert ? '⚠️ VƯỢT NGƯỠNG' : ''}\n`;
-      });
-      context += '\n';
+      if (empHours.length > 0) {
+        // Tính self-learning cho mỗi nhân viên
+        const withSL = empHours.map((h) => ({
+          name: h.user.name,
+          logged: parseFloat(h.loggedHours?.toString() ?? '0'),
+          std: parseFloat(h.stdHours?.toString() ?? '160'),
+          sl: Math.max(0, parseFloat(h.stdHours?.toString() ?? '160') - parseFloat(h.loggedHours?.toString() ?? '0')),
+        }));
 
-      // Top hours logged
-      if (topHours.length > 0) {
-        context += `⏰ TOP 10 GIỜ ĐÃ ĐẠT CAO NHẤT (Tháng này):\n`;
-        topHours.forEach((h, i) => {
-          context += `  ${i + 1}. ${h.user.name}: ${h.loggedHours}h đăng ký\n`;
+        // Top 10 self-learning cao nhất (vượt ngưỡng)
+        const topSL = [...withSL].sort((a, b) => b.sl - a.sl).slice(0, 10);
+        context += `🔴 TOP 10 SELF-LEARNING CAO NHẤT (có nguy cơ vượt ngưỡng):\n`;
+        topSL.forEach((e, i) => {
+          const flag = e.sl > 30 ? '⚠️ VƯỢT NGƯỠNG' : '';
+          context += `  ${i + 1}. ${e.name}: ${e.sl.toFixed(1)}h self-learning ${flag}\n`;
         });
         context += '\n';
+
+        // Top 10 giờ logged cao nhất
+        const topLogged = [...withSL].sort((a, b) => b.logged - a.logged).slice(0, 10);
+        context += `⏰ TOP 10 GIỜ LOG DỰ ÁN CAO NHẤT:\n`;
+        topLogged.forEach((e, i) => {
+          context += `  ${i + 1}. ${e.name}: ${e.logged.toFixed(1)}h logged\n`;
+        });
+        context += '\n';
+
+        // Bottom 5 logged thấp nhất
+        const bottomLogged = [...withSL].sort((a, b) => a.logged - b.logged).slice(0, 5);
+        context += `✅ 5 NHÂN VIÊN LOG THẤP NHẤT:\n`;
+        bottomLogged.forEach((e, i) => {
+          context += `  ${i + 1}. ${e.name}: ${e.logged.toFixed(1)}h logged\n`;
+        });
+        context += '\n';
+      } else {
+        context += `(Chưa có dữ liệu employeeHours tháng ${curMonth}/${curYear})\n\n`;
       }
 
-      // Top leaves used
       if (topLeaves.length > 0) {
-        context += `🏖️ TOP 10 PHÉP ĐÃ DÙNG NHIỀU NHẤT (Năm ${new Date().getFullYear()}):\n`;
+        context += `🏖️ TOP 10 PHÉP ĐÃ DÙNG NHIỀU NHẤT (Năm ${curYear}):\n`;
         topLeaves.forEach((l, i) => {
           const remaining = Number(l.totalDays) - Number(l.usedDays);
           context += `  ${i + 1}. ${l.user.name}: ${l.usedDays}d/${l.totalDays}d (${remaining}d còn)\n`;
-        });
-        context += '\n';
-      }
-
-      // Bottom workload
-      if (bottomWorkload.length > 0) {
-        context += `✅ 5 NHÂN VIÊN CÓ WORKLOAD THẤP NHẤT:\n`;
-        bottomWorkload.forEach((w, i) => {
-          context += `  ${i + 1}. ${w.employeeName}: ${w.hours.toFixed(1)}h\n`;
         });
         context += '\n';
       }
@@ -399,7 +616,7 @@ export class GroqService {
       return context;
     } catch (error) {
       console.error('Error fetching ranking context:', error);
-      return `Lỗi khi lấy dữ liệu xếp hạng: ${error.message}`;
+      return `Lỗi khi lấy dữ liệu xếp hạng: ${(error as Error).message}`;
     }
   }
 
@@ -519,27 +736,85 @@ export class GroqService {
     }
   }
 
-  private async getVouchersContext(): Promise<string> {
-    const [pending, recent, byStatus] = await Promise.all([
-      this.prisma.voucher.count({ where: { status: 'pending' } }),
-      this.prisma.voucher.findMany({
-        take: 10,
-        orderBy: { createdAt: 'desc' },
-        include: { project: true, user: true },
+  private async getVouchersContext(month?: number, year?: number): Promise<string> {
+    const now = new Date();
+    const targetMonth = month ?? now.getMonth() + 1;
+    const targetYear = year ?? now.getFullYear();
+    const monthStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+
+    // Kiểm tra có voucher local không
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+
+    const [localCount, byStatus] = await Promise.all([
+      this.prisma.voucher.count({
+        where: { createdAt: { gte: startDate, lte: endDate } },
       }),
-      this.prisma.voucher.groupBy({
-        by: ['status'],
-        _count: true,
-      }),
+      this.prisma.voucher.groupBy({ by: ['status'], _count: true }),
     ]);
 
-    const list = recent.map(v =>
-      `- [${v.status}] Phiếu ${v.voucherNumber}: ${v.amount?.toNumber()} | ${v.reason} | ${v.project?.name || 'N/A'}`
-    ).join('\n');
+    // Nếu có data local → dùng local
+    if (localCount > 0) {
+      const recent = await this.prisma.voucher.findMany({
+        where: { createdAt: { gte: startDate, lte: endDate } },
+        take: 20,
+        orderBy: { createdAt: 'desc' },
+        include: { project: true, user: true },
+      });
 
-    const statusSummary = byStatus.map(s => `${s.status}: ${s._count}`).join(' | ');
+      const list = recent.map(v =>
+        `- [${v.status}] ${v.voucherNumber}: ${v.amount?.toNumber().toLocaleString('vi-VN')} VND | ${v.reason} | ${v.project?.name || 'N/A'}`
+      ).join('\n');
 
-    return `DỮ LIỆU PHIẾU CHI (DATABASE):\n- Tổng phiếu chờ duyệt: ${pending}\n- Phân loại: ${statusSummary}\n- 10 phiếu gần nhất:\n${list}`;
+      const statusSummary = byStatus.map(s => `${s.status}: ${s._count}`).join(' | ');
+      return `DỮ LIỆU PHIẾU CHI THÁNG ${targetMonth}/${targetYear} (Local DB):\n- Tổng: ${localCount} | ${statusSummary}\n${list}`;
+    }
+
+    // Fallback → gọi ERP trực tiếp
+    try {
+      // Lấy cả phiếu thu (RECEIPT) và phiếu chi (PAYMENT) song song
+      const [summary, payments, receipts] = await Promise.allSettled([
+        this.erp.getVouchersSummary({ month: monthStr }),
+        this.erp.getVouchers({ month: monthStr, voucherType: 'PAYMENT', limit: 30 }),
+        this.erp.getVouchers({ month: monthStr, voucherType: 'RECEIPT', limit: 30 }),
+      ]);
+
+      const paymentList = payments.status === 'fulfilled' ? payments.value : [];
+      const receiptList = receipts.status === 'fulfilled' ? receipts.value : [];
+      const allVouchers = [...paymentList, ...receiptList];
+
+      if (allVouchers.length === 0 && summary.status === 'rejected') {
+        return `DỮ LIỆU PHIẾU THU/CHI THÁNG ${targetMonth}/${targetYear} (ERP): Không có dữ liệu.\nLỗi: ${(summary as PromiseRejectedResult).reason?.message}`;
+      }
+
+      let ctx = `DỮ LIỆU PHIẾU THU/CHI THÁNG ${targetMonth}/${targetYear} (Nguồn: ERP):\n`;
+
+      // Thêm summary nếu có
+      if (summary.status === 'fulfilled' && summary.value) {
+        const s = summary.value;
+        ctx += `📊 Tổng kết:\n`;
+        ctx += `- Phiếu chi (PAYMENT): ${s.totalPayment ?? paymentList.length} phiếu | ${(s.totalPaymentAmount ?? 0).toLocaleString('vi-VN')} VND\n`;
+        ctx += `- Phiếu thu (RECEIPT): ${s.totalReceipt ?? receiptList.length} phiếu | ${(s.totalReceiptAmount ?? 0).toLocaleString('vi-VN')} VND\n\n`;
+      }
+
+      if (paymentList.length > 0) {
+        ctx += `💸 PHIẾU CHI (${paymentList.length}):\n`;
+        paymentList.forEach((v: any) => {
+          ctx += `- [${v.status}] ${v.code || v.voucherNumber}: ${Number(v.amount || v.totalAmount || 0).toLocaleString('vi-VN')} VND | ${v.content || v.reason || 'N/A'}\n`;
+        });
+      }
+
+      if (receiptList.length > 0) {
+        ctx += `\n💰 PHIẾU THU (${receiptList.length}):\n`;
+        receiptList.forEach((v: any) => {
+          ctx += `- [${v.status}] ${v.code || v.voucherNumber}: ${Number(v.amount || v.totalAmount || 0).toLocaleString('vi-VN')} VND | ${v.content || v.reason || 'N/A'}\n`;
+        });
+      }
+
+      return ctx || `DỮ LIỆU PHIẾU THU/CHI THÁNG ${targetMonth}/${targetYear}: Không có dữ liệu trong ERP.`;
+    } catch (erpError) {
+      return `DỮ LIỆU PHIẾU CHI THÁNG ${targetMonth}/${targetYear}: Local DB trống. ERP lỗi: ${(erpError as Error).message}`;
+    }
   }
 
   private async getProjectsContext(): Promise<string> {
@@ -557,70 +832,239 @@ export class GroqService {
     return `DANH SÁCH DỰ ÁN HOẠT ĐỘNG (${projects.length} dự án):\n${list}`;
   }
 
-  private async getWorkloadContext(): Promise<string> {
+  private async getWorkloadContext(requestedMonth?: number, requestedYear?: number): Promise<string> {
     try {
+      const now = new Date();
+      const targetYear = requestedYear ?? now.getFullYear();
+      const targetMonth = requestedMonth ?? now.getMonth() + 1;
+
+      // Nguồn 1: employeeHours (được sync bởi DataSyncService - nguồn chính xác)
+      const employeeHoursCount = await this.prisma.employeeHours.count({
+        where: { year: targetYear, month: targetMonth },
+      });
+
+      if (employeeHoursCount > 0) {
+        const hours = await this.prisma.employeeHours.findMany({
+          where: { year: targetYear, month: targetMonth },
+          include: { user: { select: { name: true, department: true } } },
+          orderBy: { loggedHours: 'asc' },
+        });
+
+        // Kiểm tra chất lượng dữ liệu: nếu >50% nhân viên có logged=0 → data stale, ưu tiên ERP
+        const zeroLoggedCount = hours.filter(
+          (h) => parseFloat(h.loggedHours?.toString() ?? '0') === 0,
+        ).length;
+        const isStaleData = hours.length > 0 && zeroLoggedCount / hours.length > 0.5;
+
+        if (isStaleData) {
+          const monthStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+          try {
+            const erpReport = await this.erp.getMonthlyWorkloadReport(monthStr);
+            if (erpReport?.employees?.length > 0) {
+              let ctx = `DỮ LIỆU WORKLOAD THÁNG ${targetMonth}/${targetYear} (Nguồn: ERP - DB có data stale):\n`;
+              ctx += `- Tổng nhân sự: ${erpReport.employees.length}\n`;
+              ctx += `- Vượt ngưỡng: ${erpReport.summary?.atRiskCount ?? 0}\n\n`;
+              ctx += this.formatEmployeesByDepartment(erpReport.employees);
+              return ctx;
+            }
+          } catch {
+            // ERP không trả lời, tiếp tục dùng local DB
+          }
+        }
+
+        const atRisk = hours.filter((h) => {
+          const sl = parseFloat(h.stdHours?.toString() ?? '160') - parseFloat(h.loggedHours?.toString() ?? '0');
+          return sl > 30;
+        });
+
+        let ctx = `DỮ LIỆU WORKLOAD THÁNG ${targetMonth}/${targetYear} (Nguồn: employeeHours DB):\n`;
+        ctx += `- Tổng nhân sự: ${hours.length}\n`;
+        ctx += `- Vượt ngưỡng self-learning (>30h): ${atRisk.length}\n\n`;
+        const employeesForFormat = hours.map((h) => ({
+          fullName: h.user.name,
+          department: (h.user as any).department ?? 'N/A',
+          actualLoggedHours: parseFloat(h.loggedHours?.toString() ?? '0'),
+          effectiveStandardHours: parseFloat(h.stdHours?.toString() ?? '160'),
+          selfLearningHours: Math.max(0, parseFloat(h.stdHours?.toString() ?? '160') - parseFloat(h.loggedHours?.toString() ?? '0')),
+          isAtRisk: Math.max(0, parseFloat(h.stdHours?.toString() ?? '160') - parseFloat(h.loggedHours?.toString() ?? '0')) > 30,
+        }));
+        ctx += this.formatEmployeesByDepartment(employeesForFormat);
+
+        return ctx;
+      }
+
+      // Nguồn 2: workloadReport (legacy table) - fallback nếu không có employeeHours
       const latestReport = await this.prisma.workloadReport.findFirst({
-        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+        where: { year: targetYear, month: targetMonth },
       });
 
       if (!latestReport) {
-        return 'THÔNG TIN WORKLOAD: Chưa có dữ liệu báo cáo Workload được đồng bộ.';
+        // Nguồn 3: Gọi ERP trực tiếp
+        const monthStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+        try {
+          const erpReport = await this.erp.getMonthlyWorkloadReport(monthStr);
+          if (erpReport && erpReport.employees && erpReport.employees.length > 0) {
+            let ctx = `DỮ LIỆU WORKLOAD THÁNG ${targetMonth}/${targetYear} (Nguồn: ERP trực tiếp):\n`;
+            ctx += `- Tổng nhân sự: ${erpReport.employees.length}\n`;
+            ctx += `- Vượt ngưỡng: ${erpReport.summary?.atRiskCount ?? 0}\n\n`;
+            ctx += this.formatEmployeesByDepartment(erpReport.employees);
+            return ctx;
+          }
+        } catch (erpErr) {
+          // ERP không có data hoặc lỗi kết nối - tiếp tục xuống thông báo
+        }
+
+        // Không có data ở đâu cả
+        const anyHours = await this.prisma.employeeHours.findFirst({
+          orderBy: [{ year: 'desc' }, { month: 'desc' }],
+        });
+        const latestAvailable = anyHours ? `${anyHours.month}/${anyHours.year}` : 'chưa có';
+        return `THÔNG TIN WORKLOAD THÁNG ${targetMonth}/${targetYear}: Chưa có dữ liệu cả trong Local DB lẫn ERP. Tháng có dữ liệu gần nhất: ${latestAvailable}.`;
       }
 
-      const { year, month } = latestReport;
       const reports = await this.prisma.workloadReport.findMany({
-        where: { year, month },
+        where: { year: targetYear, month: targetMonth },
       });
 
-      const totalEmployees = reports.length;
+      let ctx = `DỮ LIỆU WORKLOAD THÁNG ${targetMonth}/${targetYear}:\n`;
+      ctx += `- Tổng nhân sự: ${reports.length}\n`;
       const alerts = reports.filter((r) => r.isAlert);
-
-      let ctx = `DỮ LIỆU WORKLOAD THÁNG ${month}/${year}:\n`;
-      ctx += `- Tổng nhân sự: ${totalEmployees}\n`;
       ctx += `- Vượt ngưỡng (>30h): ${alerts.length}\n`;
-      ctx += `- Trung bình giờ: ${(reports.reduce((a, r) => a + r.hours, 0) / totalEmployees).toFixed(1)}h\n\n`;
-
-      if (alerts.length > 0) {
-        ctx += `🔴 VƯỢT NGƯỠNG:\n`;
-        alerts.forEach((a) => {
-          ctx += `   + ${a.employeeName}: ${a.hours.toFixed(1)}h\n`;
-        });
-      }
+      reports.forEach((r) => {
+        const flag = r.isAlert ? '🔴' : '✅';
+        ctx += `${flag} ${r.employeeName}: ${r.hours.toFixed(1)}h\n`;
+      });
 
       return ctx;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2021') {
-        return 'THÔNG TIN WORKLOAD: Bảng chưa được khởi tạo. Chạy `npx prisma db push` để tạo.';
+        return 'THÔNG TIN WORKLOAD: Bảng chưa được khởi tạo.';
       }
       throw error;
     }
   }
 
-  private async getEmployeesContext(): Promise<string> {
-    const employees = await this.prisma.user.findMany({
-      take: 50,
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, name: true, email: true, department: true, role: true, joinDate: true },
-    });
-
-    const list = employees.map(e =>
-      `- ${e.name} (${e.role}) | ${e.department || 'N/A'} | ${e.email || 'N/A'}`
-    ).join('\n');
-
-    const totalCount = await this.prisma.user.count();
-    return `DANH SÁCH NHÂN SỰ (Tổng: ${totalCount}):\n${list}`;
-  }
-
-  private async getEmployeeHoursContext(): Promise<string> {
-    const latestMonth = await this.prisma.employeeHours.findFirst({
-      orderBy: [{ year: 'desc' }, { month: 'desc' }],
-    });
-
-    if (!latestMonth) {
-      return 'THÔNG TIN GIỜ LÀM VIỆC: Chưa có dữ liệu.';
+  /**
+   * Format danh sách nhân sự thành nhóm theo phòng ban, có số liệu workload
+   */
+  private formatEmployeesByDepartment(employees: Array<{
+    fullName: string | null;
+    department: string | null;
+    actualLoggedHours: number;
+    effectiveStandardHours: number;
+    selfLearningHours: number;
+    isAtRisk: boolean;
+  }>): string {
+    // Group by department
+    const byDept = new Map<string, typeof employees>();
+    for (const e of employees) {
+      const dept = e.department || 'Chưa phân bộ phận';
+      if (!byDept.has(dept)) byDept.set(dept, []);
+      byDept.get(dept)!.push(e);
     }
 
-    const { year, month } = latestMonth;
+    let ctx = '';
+    // Sort departments alphabetically
+    const sortedDepts = [...byDept.entries()].sort(([a], [b]) => a.localeCompare(b));
+
+    for (const [dept, members] of sortedDepts) {
+      const atRiskCount = members.filter((m) => m.isAtRisk).length;
+      ctx += `\n📂 ${dept} (${members.length} người${atRiskCount > 0 ? ` | ⚠️ ${atRiskCount} vượt ngưỡng` : ''}):\n`;
+      // Sort by self-learning DESC (người có vấn đề lên đầu)
+      members.sort((a, b) => b.selfLearningHours - a.selfLearningHours);
+      for (const e of members) {
+        const flag = e.isAtRisk ? '🔴' : e.selfLearningHours > 21 ? '🟡' : '✅';
+        ctx += `  ${flag} ${e.fullName}: logged=${e.actualLoggedHours.toFixed(1)}h | self-learning=${e.selfLearningHours.toFixed(1)}h\n`;
+      }
+    }
+    return ctx;
+  }
+
+  private async getEmployeesContext(): Promise<string> {
+    const [employees, totalCount, telegramCount] = await Promise.all([
+      this.prisma.user.findMany({
+        take: 100,
+        orderBy: [{ department: 'asc' }, { name: 'asc' }],
+        select: { id: true, name: true, email: true, department: true, role: true, telegramId: true },
+      }),
+      this.prisma.user.count(),
+      this.prisma.user.count({ where: { telegramId: { not: null } } }),
+    ]);
+
+    // Group by department
+    const byDept = new Map<string, typeof employees>();
+    for (const e of employees) {
+      const dept = e.department || 'Chưa phân bộ phận';
+      if (!byDept.has(dept)) byDept.set(dept, []);
+      byDept.get(dept)!.push(e);
+    }
+
+    let ctx = `DANH SÁCH NHÂN SỰ (Tổng: ${totalCount} | Telegram: ${telegramCount}):\n`;
+
+    for (const [dept, members] of byDept) {
+      ctx += `\n📂 ${dept} (${members.length} người):\n`;
+      for (const e of members) {
+        const tg = e.telegramId ? ' 📱' : '';
+        ctx += `  - ${e.name} | ${e.role}${tg}\n`;
+      }
+    }
+
+    // Nếu DB chỉ có ít user (bot/test accounts) → bổ sung từ ERP
+    if (totalCount < 10) {
+      ctx += `\n[DB chỉ có ${totalCount} user - có thể chưa sync từ ERP]\n`;
+      try {
+        const now = new Date();
+        const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const erpReport = await this.erp.getMonthlyWorkloadReport(monthStr);
+        if (erpReport?.employees?.length) {
+          const erpByDept = new Map<string, string[]>();
+          for (const e of erpReport.employees) {
+            const dept = e.department || 'N/A';
+            if (!erpByDept.has(dept)) erpByDept.set(dept, []);
+            erpByDept.get(dept)!.push(e.fullName || e.employeeCode || '?');
+          }
+          ctx += `\nDỮ LIỆU NHÂN SỰ TỪ ERP (${erpReport.employees.length} người):\n`;
+          for (const [dept, names] of erpByDept) {
+            ctx += `📂 ${dept} (${names.length}): ${names.join(', ')}\n`;
+          }
+        }
+      } catch {
+        ctx += `[Không thể kết nối ERP để bổ sung danh sách]\n`;
+      }
+    }
+
+    return ctx;
+  }
+
+  private async getEmployeeHoursContext(requestedMonth?: number, requestedYear?: number): Promise<string> {
+    const now = new Date();
+    const targetYear = requestedYear ?? now.getFullYear();
+    const targetMonth = requestedMonth ?? now.getMonth() + 1;
+
+    // Kiểm tra có data cho tháng được yêu cầu không
+    const hasData = await this.prisma.employeeHours.count({
+      where: { year: targetYear, month: targetMonth },
+    });
+
+    let year: number;
+    let month: number;
+
+    if (hasData > 0) {
+      year = targetYear;
+      month = targetMonth;
+    } else {
+      // Fallback: lấy tháng mới nhất có data, kèm thông báo
+      const latestMonth = await this.prisma.employeeHours.findFirst({
+        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+      });
+
+      if (!latestMonth) {
+        return 'THÔNG TIN GIỜ LÀM VIỆC: Chưa có dữ liệu.';
+      }
+      year = latestMonth.year;
+      month = latestMonth.month;
+    }
+
     const hours = await this.prisma.employeeHours.findMany({
       where: { year, month },
       include: { user: true, project: true },
@@ -631,7 +1075,11 @@ export class GroqService {
       `- ${h.user.name} (${h.project?.name || 'N/A'}): ${h.loggedHours}h logged | ${h.stdHours}h std | ${h.selfLearningHours}h self-learn`
     ).join('\n');
 
-    return `GIỜ LÀM VIỆC THÁNG ${month}/${year}:\n${list}`;
+    const note = (year !== targetYear || month !== targetMonth)
+      ? `\n[Lưu ý: Không có data tháng ${targetMonth}/${targetYear}, hiển thị tháng ${month}/${year}]`
+      : '';
+
+    return `GIỜ LÀM VIỆC THÁNG ${month}/${year}:${note}\n${list}`;
   }
 
   private async getLeavesContext(): Promise<string> {
@@ -694,27 +1142,73 @@ export class GroqService {
   }
 
   private async getSystemOverviewContext(): Promise<string> {
-    const [voucherCount, projectCount, userCount, leaveCount, chatCount, alerts] = await Promise.all([
-      this.prisma.voucher.count(),
-      this.prisma.project.count(),
-      this.prisma.user.count(),
-      this.prisma.leave.count(),
-      this.prisma.chatLog.count(),
-      this.prisma.alert.findMany({ take: 10 }),
-    ]);
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    const alertList = alerts.map(a =>
-      `- ${a.alertType}: ${a.message}`
-    ).join('\n');
+    const [localVoucherCount, projectCount, userCount, leaveCount, chatCount, alerts, telegramCount] =
+      await Promise.all([
+        this.prisma.voucher.count(),
+        this.prisma.project.count(),
+        this.prisma.user.count(),
+        this.prisma.leave.count(),
+        this.prisma.chatLog.count(),
+        this.prisma.alert.findMany({ take: 10 }),
+        this.prisma.user.count({ where: { telegramId: { not: null } } }),
+      ]);
+
+    let voucherInfo = `${localVoucherCount} (local DB)`;
+    let workloadInfo = '';
+    let erpStatus = '';
+
+    // Bổ sung dữ liệu từ ERP
+    try {
+      const [erpSummary, erpPending, erpWorkload, erpEmployees] = await Promise.allSettled([
+        this.erp.getVouchersSummary({ month: monthStr }),
+        this.erp.getVouchers({ month: monthStr, filterWaitingApproval: true, limit: 5 }),
+        this.erp.getMonthlyWorkloadReport(monthStr),
+        this.erp.getEmployees({ limit: 5 }),
+      ]);
+
+      if (erpSummary.status === 'fulfilled' && erpSummary.value) {
+        const s = erpSummary.value;
+        voucherInfo = `${localVoucherCount} local | ERP tháng ${monthStr}: ` +
+          `${s.totalPayment ?? '?'} phiếu chi (${Number(s.totalPaymentAmount ?? 0).toLocaleString('vi-VN')} VND) | ` +
+          `${s.totalReceipt ?? '?'} phiếu thu (${Number(s.totalReceiptAmount ?? 0).toLocaleString('vi-VN')} VND)`;
+      } else if (erpSummary.status === 'rejected') {
+        voucherInfo = `${localVoucherCount} local | ERP lỗi: ${(erpSummary as PromiseRejectedResult).reason?.message}`;
+      }
+
+      if (erpPending.status === 'fulfilled' && erpPending.value.length > 0) {
+        const pendingList = erpPending.value.map((v: any) => `${v.code || v.voucherNumber}: ${Number(v.amount || 0).toLocaleString('vi-VN')} VND`).join(', ');
+        voucherInfo += `\n  ⏳ Chờ duyệt: ${pendingList}`;
+      }
+
+      if (erpWorkload.status === 'fulfilled' && erpWorkload.value?.employees) {
+        const emp = erpWorkload.value;
+        workloadInfo = `\n📋 Workload tháng ${monthStr} (ERP): ${emp.employees.length} người | ${emp.summary?.atRiskCount ?? 0} vượt ngưỡng`;
+      }
+
+      if (erpEmployees.status === 'fulfilled') {
+        workloadInfo += `\n👥 Nhân sự ERP (active): ${erpEmployees.value.length}+ người`;
+      }
+
+      erpStatus = erpSummary.status === 'fulfilled' ? '🟢 ERP kết nối OK' : '🔴 ERP không kết nối được';
+    } catch {
+      erpStatus = '🔴 ERP không kết nối được';
+    }
+
+    const alertList = alerts.map(a => `- ${a.alertType}: ${a.message}`).join('\n');
 
     return `TỔNG QUAN HỆ THỐNG:\n` +
-      `📊 Thống kê:\n` +
-      `- Tổng phiếu chi: ${voucherCount}\n` +
-      `- Tổng dự án: ${projectCount}\n` +
-      `- Tổng nhân sự: ${userCount}\n` +
-      `- Tổng đơn nghỉ: ${leaveCount}\n` +
-      `- Tổng tin nhắn: ${chatCount}\n` +
-      `- Cảnh báo gần đây: ${alerts.length}\n${alertList}`;
+      `📊 Local DB:\n` +
+      `- Phiếu chi: ${voucherInfo}\n` +
+      `- Dự án: ${projectCount}\n` +
+      `- Nhân sự (DB): ${userCount} (${telegramCount} có Telegram)\n` +
+      `- Đơn nghỉ: ${leaveCount}\n` +
+      `- Tin nhắn chat: ${chatCount}\n` +
+      workloadInfo +
+      `\n\n🔌 ${erpStatus}` +
+      (alerts.length > 0 ? `\n\n⚠️ Cảnh báo:\n${alertList}` : '');
   }
 
   private async getLatestCashflowSummary(): Promise<string> {

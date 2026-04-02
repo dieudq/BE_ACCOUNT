@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { accountingBotAPI } from './agent-api-client';
 import { ParticipationReportService } from '../../reports/participation.service';
+import { NlpIntentService, IntentType } from './nlp-intent.service';
+import { ConversationContextService } from './conversation-context.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -17,81 +19,77 @@ export class SmartQueryService {
   constructor(
     private prisma: PrismaService,
     private participation: ParticipationReportService,
+    private nlp: NlpIntentService,
+    private context: ConversationContextService,
   ) {}
 
   /**
    * Main entry - xử lý BẤT CỨ câu hỏi
+   * Dùng NLP (LLM-based) để parse intent thay vì regex cứng nhắc
    */
-  async answerQuestion(question: string): Promise<string> {
-    const lowerQ = question.toLowerCase().trim();
+  async answerQuestion(question: string, userId?: string): Promise<string> {
+    const sessionId = userId || 'anonymous';
 
-    // === INTENT DETECTION ===
+    // Lấy conversation context để LLM hiểu "họ là ai?", "phiếu đó bao nhiêu?"
+    const conversationHistory = this.context.getContextSummary(sessionId);
 
-    // 0. WORKLOAD / SELF-LEARNING queries (check first — high priority)
-    if (
-      this.isAbout(lowerQ, [
-        'workload', 'self-learning', 'self learning', 'tự học',
-        'tham gia dự án', 'báo cáo tháng', 'giờ log', 'cảnh báo workload',
-        'ngưỡng', 'vượt ngưỡng', 'sắp vượt', 'at-risk', 'at risk',
-      ])
-    ) {
-      return await this.handleWorkloadQuery(question);
+    // Parse intent bằng LLM
+    const parsed = await this.nlp.parseIntent(question, conversationHistory);
+
+    // Nếu LLM thấy cần hỏi lại (ambiguous)
+    if (parsed.clarificationNeeded) {
+      this.context.addTurn(sessionId, 'user', question, parsed.intent);
+      this.context.addTurn(sessionId, 'assistant', parsed.clarificationNeeded);
+      return parsed.clarificationNeeded;
     }
 
-    // 1. PENDING/WAITING - "chờ", "chưa", "đang chờ"
-    if (this.isAbout(lowerQ, ['chờ', 'chưa', 'pending', 'waiting', 'đang chờ'])) {
-      return await this.handlePendingQuery(question);
-    }
+    // Route to handler dựa trên intent
+    const answer = await this.routeByIntent(parsed.intent, parsed.entities, question);
 
-    // 2. APPROVAL/STATUS - "duyệt", "phê duyệt", "bước", "progress"
-    if (this.isAbout(lowerQ, ['duyệt', 'phê duyệt', 'approval', 'bước', 'progress', 'status'])) {
-      return await this.handleApprovalQuery(question);
-    }
+    // Lưu lịch sử hội thoại
+    this.context.addTurn(sessionId, 'user', question, parsed.intent);
+    this.context.addTurn(sessionId, 'assistant', answer);
 
-    // 3. COUNT/STATISTICS - "mấy", "bao nhiêu", "tổng", "stats"
-    if (this.isAbout(lowerQ, ['mấy', 'bao nhiêu', 'tổng', 'stats', 'đếm', 'count'])) {
-      return await this.handleCountQuery(question);
-    }
-
-    // 4. CASHFLOW/GL - "cashflow", "tài khoản", "GL", "danh mục"
-    if (this.isAbout(lowerQ, ['cashflow', 'tài khoản', 'gl', 'danh mục', 'map'])) {
-      return await this.handleCashflowQuery(question);
-    }
-
-    // 5. VOUCHER DETAILS - "phiếu", "chi tiết", "voucher"
-    if (this.isAbout(lowerQ, ['phiếu', 'chi tiết', 'voucher', 'ax', 'px', 'cv'])) {
-      return await this.handleVoucherQuery(question);
-    }
-
-    // 6. DATE RELATED - "hôm nay", "tuần", "tháng", "năm"
-    if (this.isAbout(lowerQ, ['hôm nay', 'tuần', 'tháng', 'năm', 'today', 'week', 'month'])) {
-      return await this.handleDateRangeQuery(question);
-    }
-
-    // 7. AMOUNT/MONEY - "tiền", "số tiền", "amount", "chi bao nhiêu"
-    if (this.isAbout(lowerQ, ['tiền', 'số tiền', 'amount', 'chi bao nhiêu', 'tổng tiền'])) {
-      return await this.handleAmountQuery(question);
-    }
-
-    // 8. PERSON/APPROVER - "ai", "người", "approver", "duyệt bằng ai"
-    if (this.isAbout(lowerQ, ['ai duyệt', 'người nào', 'approver', 'chờ ai', 'duyệt bằng ai'])) {
-      return await this.handleApproverQuery(question);
-    }
-
-    // 9. HISTORY/TIMELINE - "lịch sử", "history", "timeline"
-    if (this.isAbout(lowerQ, ['lịch sử', 'history', 'timeline', 'quá trình'])) {
-      return await this.handleHistoryQuery(question);
-    }
-
-    // === FALLBACK: Database search ===
-    return await this.handleDatabaseSearch(question);
+    return answer;
   }
 
   /**
-   * Check if question is about certain keywords
+   * Route request đến đúng handler dựa trên intent đã parse
    */
-  private isAbout(question: string, keywords: string[]): boolean {
-    return keywords.some((kw) => question.includes(kw));
+  private async routeByIntent(
+    intent: IntentType,
+    entities: Record<string, any>,
+    rawQuestion: string,
+  ): Promise<string> {
+    switch (intent) {
+      case 'query_pending_vouchers':
+        return this.handlePendingQuery(rawQuestion);
+      case 'query_approval_status':
+        return this.handleApprovalQuery(rawQuestion, entities.voucherCode);
+      case 'count_vouchers':
+        return this.handleCountQuery(rawQuestion);
+      case 'query_voucher_detail':
+        return this.handleVoucherQuery(rawQuestion, entities.voucherCode);
+      case 'query_vouchers_by_date':
+        return this.handleDateRangeQuery(rawQuestion);
+      case 'query_amount':
+        return this.handleAmountQueryWithEntities(entities.month, entities.year, entities.category);
+      case 'query_approver':
+        return this.handleApproverQuery(rawQuestion);
+      case 'query_history':
+        return this.handleHistoryQuery(rawQuestion, entities.voucherCode);
+      case 'query_cashflow_gl':
+        return this.handleCashflowQuery(rawQuestion, entities.glAccount);
+      case 'query_workload_report':
+      case 'query_at_risk_employees':
+      case 'analyze_employee':
+      case 'team_insights':
+      case 'download_report':
+      case 'sync_workload':
+        return this.handleWorkloadQuery(rawQuestion, entities);
+      default:
+        return this.handleDatabaseSearch(rawQuestion);
+    }
   }
 
   /**
@@ -109,17 +107,19 @@ export class SmartQueryService {
   /**
    * Handle approval/status questions - "Phiếu AX99 ở bước nào?"
    */
-  private async handleApprovalQuery(question: string): Promise<string> {
+  private async handleApprovalQuery(question: string, voucherCode?: string): Promise<string> {
     try {
-      // Extract voucher code if present
-      const voucherMatch = question.match(/(ax|px|cv)(\d+)/i);
-      if (voucherMatch) {
-        const code = `${voucherMatch[1].toUpperCase()}${voucherMatch[2]}`;
+      // Dùng voucherCode từ NLP parser trước, fallback sang regex
+      const code = voucherCode || (() => {
+        const m = question.match(/(ax|px|cv)(\d+)/i);
+        return m ? `${m[1].toUpperCase()}${m[2]}` : null;
+      })();
+
+      if (code) {
         const result = await accountingBotAPI.getVoucherStatus(code);
         return result.formatted;
       }
 
-      // Otherwise return summary
       const result = await accountingBotAPI.getApprovalsSummary();
       return result.formatted;
     } catch (error) {
@@ -155,39 +155,20 @@ export class SmartQueryService {
   }
 
   /**
-   * Handle cashflow/GL questions
-   */
-  private async handleCashflowQuery(question: string): Promise<string> {
-    try {
-      // Check for specific account code (334.1, 6422.5, etc)
-      const accountMatch = question.match(/(\d+\.?\d*)/);
-      if (accountMatch) {
-        const accountCode = accountMatch[0];
-        return await this.getGLAccountMapping(accountCode);
-      }
-
-      // Otherwise cashflow overview
-      const result = await accountingBotAPI.getCashflowInfo();
-      return result.formatted;
-    } catch (error) {
-      return `❌ Lỗi lấy cashflow: ${(error as Error).message}`;
-    }
-  }
-
-  /**
    * Handle voucher detail questions
    */
-  private async handleVoucherQuery(question: string): Promise<string> {
+  private async handleVoucherQuery(question: string, voucherCode?: string): Promise<string> {
     try {
-      // Extract voucher code
-      const voucherMatch = question.match(/(ax|px|cv)(\d+)/i);
-      if (voucherMatch) {
-        const code = `${voucherMatch[1].toUpperCase()}${voucherMatch[2]}`;
+      const code = voucherCode || (() => {
+        const m = question.match(/(ax|px|cv)(\d+)/i);
+        return m ? `${m[1].toUpperCase()}${m[2]}` : null;
+      })();
+
+      if (code) {
         const result = await accountingBotAPI.getVoucherStatus(code);
         return result.formatted;
       }
 
-      // Otherwise list all
       const result = await accountingBotAPI.listVouchers();
       return result.formatted;
     } catch (error) {
@@ -219,29 +200,44 @@ export class SmartQueryService {
   }
 
   /**
+   * Handle amount/money questions với entities đã extract sẵn từ NLP
+   */
+  private async handleAmountQueryWithEntities(
+    month?: number,
+    year?: number,
+    category?: string,
+  ): Promise<string> {
+    try {
+      if (category && month) {
+        return await this.queryAmountByMonthAndCategory(month, category, year);
+      } else if (month) {
+        return await this.queryAmountByMonth(month, year);
+      }
+
+      const result = await accountingBotAPI.getTodayVouchers();
+      return result.formatted;
+    } catch (error) {
+      return `❌ Lỗi lấy thông tin tiền: ${(error as Error).message}`;
+    }
+  }
+
+  /**
    * Handle amount/money questions - "Chi bao nhiêu tháng 1?" "Lương dự án tháng 1?"
+   * @deprecated Dùng handleAmountQueryWithEntities thay thế
    */
   private async handleAmountQuery(question: string): Promise<string> {
     try {
       const lowerQ = question.toLowerCase();
-
-      // Extract month if present (tháng 1, tháng 2, etc)
       const monthMatch = lowerQ.match(/tháng\s*(\d+)/);
       const month = monthMatch ? parseInt(monthMatch[1]) : null;
-
-      // Extract category/account if present (334.1, lương, dự án, etc)
       const categoryMatch = lowerQ.match(/(334|dự án|lương|quản lý|sales|marketing)/i);
 
-      // Query based on extracted info
       if (categoryMatch && month) {
-        // Query by month + category
         return await this.queryAmountByMonthAndCategory(month, categoryMatch[0]);
       } else if (month) {
-        // Query by month
         return await this.queryAmountByMonth(month);
       }
 
-      // Default: today's amount
       const result = await accountingBotAPI.getTodayVouchers();
       return result.formatted;
     } catch (error) {
@@ -252,7 +248,7 @@ export class SmartQueryService {
   /**
    * Query amount by month and category
    */
-  private async queryAmountByMonthAndCategory(month: number, category: string): Promise<string> {
+  private async queryAmountByMonthAndCategory(month: number, category: string, year?: number): Promise<string> {
     try {
       // Map category to GL account
       const accountMap: { [key: string]: string[] } = {
@@ -265,11 +261,11 @@ export class SmartQueryService {
       };
 
       const accounts = accountMap[category.toLowerCase()] || ['334.1'];
-      
+
       // Query vouchers for this month
-      const year = new Date().getFullYear();
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0);
+      const resolvedYear = year ?? new Date().getFullYear();
+      const startDate = new Date(resolvedYear, month - 1, 1);
+      const endDate = new Date(resolvedYear, month, 0);
 
       const vouchers = await this.prisma.voucher.findMany({
         where: {
@@ -287,7 +283,7 @@ export class SmartQueryService {
       const totalAmount = vouchers.reduce((sum, v) => sum + (parseInt(v.amount?.toString() || '0') || 0), 0);
       const formattedTotal = totalAmount.toLocaleString('vi-VN');
 
-      return `💰 <b>Chi phí ${category} tháng ${month}:</b> ${formattedTotal} VND\n📊 Số phiếu: ${vouchers.length}`;
+      return `💰 <b>Chi phí ${category} tháng ${month}/${resolvedYear}:</b> ${formattedTotal} VND\n📊 Số phiếu: ${vouchers.length}`;
     } catch (error) {
       return `❌ Lỗi: ${(error as Error).message}`;
     }
@@ -296,11 +292,11 @@ export class SmartQueryService {
   /**
    * Query amount by month
    */
-  private async queryAmountByMonth(month: number): Promise<string> {
+  private async queryAmountByMonth(month: number, year?: number): Promise<string> {
     try {
-      const year = new Date().getFullYear();
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0);
+      const resolvedYear = year ?? new Date().getFullYear();
+      const startDate = new Date(resolvedYear, month - 1, 1);
+      const endDate = new Date(resolvedYear, month, 0);
 
       const vouchers = await this.prisma.voucher.findMany({
         where: {
@@ -319,9 +315,52 @@ export class SmartQueryService {
       const formattedTotal = totalAmount.toLocaleString('vi-VN');
       const approved = vouchers.filter((v) => v.status === 'approved').length;
 
-      return `💰 <b>Tháng ${month}:</b> ${formattedTotal} VND\n📊 Số phiếu: ${vouchers.length} (✅ ${approved} đã duyệt)`;
+      return `💰 <b>Tháng ${month}/${resolvedYear}:</b> ${formattedTotal} VND\n📊 Số phiếu: ${vouchers.length} (✅ ${approved} đã duyệt)`;
     } catch (error) {
       return `❌ Lỗi: ${(error as Error).message}`;
+    }
+  }
+
+  /**
+   * Handle history questions
+   */
+  private async handleHistoryQuery(question: string, voucherCode?: string): Promise<string> {
+    try {
+      const code = voucherCode || (() => {
+        const m = question.match(/(ax|px|cv)(\d+)/i);
+        return m ? `${m[1].toUpperCase()}${m[2]}` : null;
+      })();
+
+      if (code) {
+        const result = await accountingBotAPI.getVoucherStatus(code);
+        return result.formatted;
+      }
+
+      return `❌ Vui lòng chỉ định mã phiếu (e.g., AX99)`;
+    } catch (error) {
+      return `❌ Lỗi lấy lịch sử: ${(error as Error).message}`;
+    }
+  }
+
+  /**
+   * Handle cashflow/GL questions với entities từ NLP
+   */
+  private async handleCashflowQuery(question: string, glAccount?: string): Promise<string> {
+    try {
+      if (glAccount) {
+        return await this.getGLAccountMapping(glAccount);
+      }
+
+      // Fallback: regex extract
+      const accountMatch = question.match(/(\d+\.?\d*)/);
+      if (accountMatch) {
+        return await this.getGLAccountMapping(accountMatch[0]);
+      }
+
+      const result = await accountingBotAPI.getCashflowInfo();
+      return result.formatted;
+    } catch (error) {
+      return `❌ Lỗi lấy cashflow: ${(error as Error).message}`;
     }
   }
 
@@ -343,25 +382,6 @@ export class SmartQueryService {
       return result.formatted;
     } catch (error) {
       return `❌ Lỗi lấy người duyệt: ${(error as Error).message}`;
-    }
-  }
-
-  /**
-   * Handle history questions
-   */
-  private async handleHistoryQuery(question: string): Promise<string> {
-    try {
-      // Extract voucher code
-      const voucherMatch = question.match(/(ax|px|cv)(\d+)/i);
-      if (voucherMatch) {
-        const code = `${voucherMatch[1].toUpperCase()}${voucherMatch[2]}`;
-        const result = await accountingBotAPI.getVoucherStatus(code);
-        return result.formatted;
-      }
-
-      return `❌ Vui lòng chỉ định mã phiếu (e.g., AX99)`;
-    } catch (error) {
-      return `❌ Lỗi lấy lịch sử: ${(error as Error).message}`;
     }
   }
 
@@ -400,20 +420,39 @@ export class SmartQueryService {
 
   /**
    * Handle workload / participation queries
+   * Nhận entities đã parse từ NLP hoặc fallback tự extract
    */
-  private async handleWorkloadQuery(question: string): Promise<string> {
+  private async handleWorkloadQuery(question: string, entities?: Record<string, any>): Promise<string> {
     try {
       const lowerQ = question.toLowerCase();
       const now = new Date();
 
-      // Extract month if mentioned: "tháng 3", "tháng 03", "3/2026"
-      const monthMatch = lowerQ.match(/tháng\s*(\d{1,2})/);
-      const yearMatch = lowerQ.match(/năm\s*(\d{4})|(\d{4})/);
-      const month = monthMatch ? parseInt(monthMatch[1], 10) : now.getMonth() + 1;
-      const year = yearMatch ? parseInt(yearMatch[1] || yearMatch[2], 10) : now.getFullYear();
+      // Ưu tiên dùng entities từ NLP parser
+      const month = entities?.month ?? (() => {
+        const m = lowerQ.match(/tháng\s*(\d{1,2})/);
+        return m ? parseInt(m[1], 10) : now.getMonth() + 1;
+      })();
+      const year = entities?.year ?? (() => {
+        const m = lowerQ.match(/năm\s*(\d{4})|(\d{4})/);
+        return m ? parseInt(m[1] || m[2], 10) : now.getFullYear();
+      })();
+      const employeeName: string | undefined = entities?.employeeName;
+
+      // analyze_employee intent
+      if (employeeName) {
+        // Delegate thêm phân tích chi tiết cho WorkloadAnalysisService nếu cần
+        const risks = await this.participation.getAtRiskEmployees(year, month, 30);
+        const emp = risks.find(
+          (r) => r.employeeName.toLowerCase().includes(employeeName.toLowerCase()),
+        );
+        if (!emp) {
+          return `❌ Không tìm thấy nhân sự "${employeeName}" trong tháng ${month}/${year}`;
+        }
+        return `👤 <b>${emp.employeeName}</b> tháng ${month}/${year}:\n• Self-learning: ${emp.selfLearningHours.toFixed(1)}h\n• Dự án: ${(emp as any).projectHours?.toFixed(1) ?? 'N/A'}h`;
+      }
 
       // "Ai sắp vượt / at-risk"
-      if (this.isAbout(lowerQ, ['sắp', 'at-risk', 'at risk', 'ngưỡng', 'vượt'])) {
+      if (/sắp|at.risk|ngưỡng|vượt|cảnh báo/.test(lowerQ)) {
         const risks = await this.participation.getAtRiskEmployees(year, month, 30);
         if (risks.length === 0) {
           return `✅ Tháng ${month}/${year}: Không có nhân sự nào có nguy cơ vượt ngưỡng 30h self-learning.`;
@@ -427,6 +466,8 @@ export class SmartQueryService {
         }
         return msg;
       }
+
+      // Return full report
 
       // Default: full report summary
       const report = await this.participation.generateMonthlyReport(year, month);

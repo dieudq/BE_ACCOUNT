@@ -167,6 +167,221 @@ export class ERPClientService {
   }
 
   /**
+   * GET /api/accounting/vouchers
+   * Lấy danh sách phiếu thu/chi từ ERP
+   * @param voucherType - "RECEIPT" (phiếu thu) | "PAYMENT" (phiếu chi) | undefined (tất cả)
+   * @param month - "2026-03" → tự động convert sang issueDateFrom/To
+   * @param status - "DRAFT" | "PROCESSING" | "APPROVED" | "REJECTED" | "CANCELLED"
+   */
+  async getVouchers(params: {
+    month?: string;
+    voucherType?: 'RECEIPT' | 'PAYMENT';
+    status?: string;
+    limit?: number;
+    filterWaitingApproval?: boolean;
+  } = {}): Promise<any[]> {
+    const token = await this.login();
+    const erpUrl = process.env.ERP_API_URL || 'http://localhost:9999';
+
+    const query = new URLSearchParams();
+
+    // Convert "2026-03" → issueDateFrom="2026-03-01" & issueDateTo="2026-03-31"
+    if (params.month) {
+      const [y, m] = params.month.split('-').map(Number);
+      const from = `${y}-${String(m).padStart(2, '0')}-01`;
+      const lastDay = new Date(y, m, 0).getDate();
+      const to = `${y}-${String(m).padStart(2, '0')}-${lastDay}`;
+      query.set('issueDateFrom', from);
+      query.set('issueDateTo', to);
+    }
+
+    if (params.voucherType) query.set('voucherType', params.voucherType);
+    if (params.status) query.set('status', params.status);
+    if (params.limit) query.set('limit', String(params.limit));
+    else query.set('limit', '50');
+    if (params.filterWaitingApproval) query.set('filterWaitingApproval', 'true');
+    this.logger.log(`📡 ERP getVouchers: ${query.toString()}`);
+
+    const response = await fetch(`${erpUrl}/api/accounting/vouchers?${query}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`ERP getVouchers failed: ${response.status} - ${text}`);
+    }
+
+    const data = await response.json();
+    return Array.isArray(data) ? data : (data.data ?? data.items ?? data.vouchers ?? []);
+  }
+
+  /**
+   * GET /api/accounting/vouchers/statistics/summary
+   * Thống kê nhanh phiếu thu/chi theo khoảng thời gian
+   */
+  async getVouchersSummary(params: { month?: string; startDate?: string; endDate?: string } = {}): Promise<any> {
+    const token = await this.login();
+    const erpUrl = process.env.ERP_API_URL || 'http://localhost:9999';
+
+    const query = new URLSearchParams();
+
+    if (params.month) {
+      const [y, m] = params.month.split('-').map(Number);
+      query.set('startDate', `${y}-${String(m).padStart(2, '0')}-01`);
+      const lastDay = new Date(y, m, 0).getDate();
+      query.set('endDate', `${y}-${String(m).padStart(2, '0')}-${lastDay}`);
+    } else {
+      if (params.startDate) query.set('startDate', params.startDate);
+      if (params.endDate) query.set('endDate', params.endDate);
+    }
+
+    this.logger.log(`📡 ERP getVouchersSummary: ${query.toString()}`);
+
+    const response = await fetch(`${erpUrl}/api/accounting/vouchers/statistics/summary?${query}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`ERP getVouchersSummary failed: ${response.status} - ${text}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * GET /api/hr/employees
+   * Lấy danh sách nhân sự từ ERP
+   */
+  async getEmployees(params: {
+    department?: string;
+    status?: string;
+    search?: string;
+    limit?: number;
+  } = {}): Promise<any[]> {
+    const token = await this.login();
+    const erpUrl = process.env.ERP_API_URL || 'http://localhost:9999';
+
+    const query = new URLSearchParams();
+    if (params.department) query.set('department', params.department);
+    if (params.status) query.set('status', params.status || 'ACTIVE');
+    if (params.search) query.set('search', params.search);
+    query.set('limit', String(params.limit ?? 200));
+
+    this.logger.log(`📡 ERP getEmployees: ${query.toString()}`);
+
+    const response = await fetch(`${erpUrl}/api/hr/employees?${query}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`ERP getEmployees failed: ${response.status} - ${text}`);
+    }
+
+    const data = await response.json();
+    return Array.isArray(data) ? data : (data.data ?? data.employees ?? data.items ?? []);
+  }
+
+  /**
+   * GET /api/application/time-applications
+   * Lấy danh sách đơn nghỉ phép từ ERP
+   */
+  async getLeaveApplications(params: {
+    status?: string;
+    filterWaitingApproval?: boolean;
+    limit?: number;
+  } = {}): Promise<any[]> {
+    const token = await this.login();
+    const erpUrl = process.env.ERP_API_URL || 'http://localhost:9999';
+
+    const query = new URLSearchParams();
+    if (params.status) query.set('status', params.status);
+    if (params.filterWaitingApproval) query.set('filterWaitingApproval', 'true');
+    query.set('limit', String(params.limit ?? 50));
+
+    const response = await fetch(`${erpUrl}/api/application/time-applications?${query}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`ERP getLeaveApplications failed: ${response.status} - ${text}`);
+    }
+
+    const data = await response.json();
+    return Array.isArray(data) ? data : (data.data ?? data.items ?? []);
+  }
+
+  /**
+   * Generic GET - dùng khi cần gọi endpoint bất kỳ
+   */
+  async get<T = any>(path: string, queryParams?: Record<string, string>): Promise<T> {
+    const token = await this.login();
+    const erpUrl = process.env.ERP_API_URL || 'http://localhost:9999';
+
+    const query = queryParams ? '?' + new URLSearchParams(queryParams).toString() : '';
+    this.logger.log(`📡 ERP GET: ${path}${query}`);
+
+    const response = await fetch(`${erpUrl}${path}${query}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`ERP GET ${path} failed: ${response.status} - ${text}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Probe ERP - thử các endpoint phổ biến để tìm endpoint hợp lệ cho vouchers
+   * Dùng để debug khi không biết chính xác URL ERP
+   */
+  async probeEndpoints(): Promise<{ working: string[]; failed: Array<{ path: string; error: string }> }> {
+    const erpUrl = process.env.ERP_API_URL || 'http://localhost:9999';
+    let token = '';
+    try { token = await this.login(); } catch { /* skip auth endpoints */ }
+
+    const candidatePaths = [
+      '/api/ui/health',
+      '/api/accounting/vouchers',
+      '/api/vouchers',
+      '/api/payments',
+      '/api/accounting/payments',
+      '/api/accounting/receipts',
+      '/api/accounting/transactions',
+      '/api/finance/vouchers',
+      '/api/workload-warning/admin/report/monthly?month=2026-04',
+    ];
+
+    const working: string[] = [];
+    const failed: Array<{ path: string; error: string }> = [];
+
+    await Promise.all(
+      candidatePaths.map(async (path) => {
+        try {
+          const res = await fetch(`${erpUrl}${path}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            signal: AbortSignal.timeout(3000),
+          });
+          if (res.ok || res.status === 400 || res.status === 422) {
+            // 400/422 = endpoint exists but bad params
+            working.push(`${path} → ${res.status}`);
+          } else {
+            failed.push({ path, error: `HTTP ${res.status}` });
+          }
+        } catch (e: any) {
+          failed.push({ path, error: e.message });
+        }
+      }),
+    );
+
+    return { working, failed };
+  }
+
+  /**
    * Approve a voucher in ERP
    */
   async approveVoucher(voucher: any, approvalReason?: string): Promise<any> {

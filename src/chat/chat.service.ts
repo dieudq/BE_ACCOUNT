@@ -17,7 +17,8 @@ export class ChatService {
   async processQuery(message: string, userId: string): Promise<string> {
     try {
       // Use SmartQueryService to answer (handles all accounting queries)
-      return await this.smartQuery.answerQuestion(message);
+      // Truyền userId để SmartQueryService có thể dùng conversation context
+      return await this.smartQuery.answerQuestion(message, userId);
     } catch (error) {
       console.error('Chat error:', error);
       return `❌ Lỗi: ${(error as Error).message}. Vui lòng thử lại sau.`;
