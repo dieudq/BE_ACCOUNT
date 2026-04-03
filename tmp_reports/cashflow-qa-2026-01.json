@@ -1,12 +1,14 @@
 {
   "period": "2026-01",
-  "sourceFilePath": "/root/project/BE_ACCOUNT/uploads/gl_1775124163099_So_chi_tiet_cac_tai_khoan (1).xlsx",
+  "sourceFilePath": "/root/project/BE_ACCOUNT/uploads/gl_1775151068878_So_chi_tiet_cac_tai_khoan.xlsx",
   "reportFilePath": "/root/project/BE_ACCOUNT/exports/cashflow_2026-01.xlsx",
-  "generatedAt": "2026-04-02T10:02:45.281Z",
+  "generatedAt": "2026-04-02T17:32:40.426Z",
   "rows": [
     {
       "row": 3,
       "label": "ĐẦU KỲ",
+      "category": "other",
+      "primaryValue": 10000,
       "values": [
         10000,
         10000,
@@ -24,6 +26,8 @@
     {
       "row": 7,
       "label": "131+515.1-635.1",
+      "category": "other",
+      "primaryValue": 1110,
       "values": [
         1110
       ]
@@ -31,6 +35,8 @@
     {
       "row": 12,
       "label": "Thu khác",
+      "category": "income",
+      "primaryValue": 9350,
       "values": [
         9350
       ]
@@ -38,6 +44,8 @@
     {
       "row": 13,
       "label": "Thu từ khấu trừ thuế CTV",
+      "category": "income",
+      "primaryValue": 0,
       "values": [
         0
       ]
@@ -45,6 +53,8 @@
     {
       "row": 14,
       "label": "Lãi/lỗ TG",
+      "category": "other",
+      "primaryValue": 0,
       "values": [
         0
       ]
@@ -52,6 +62,8 @@
     {
       "row": 15,
       "label": "515.4-635.2",
+      "category": "other",
+      "primaryValue": 69700,
       "values": [
         69700
       ]
@@ -59,6 +71,8 @@
     {
       "row": 24,
       "label": "chia theo pbo",
+      "category": "other",
+      "primaryValue": 105380,
       "values": [
         105380
       ]
@@ -66,6 +80,8 @@
     {
       "row": 32,
       "label": "6421.2",
+      "category": "other",
+      "primaryValue": 155720,
       "values": [
         155720
       ]
@@ -73,6 +89,8 @@
     {
       "row": 38,
       "label": "6421.3",
+      "category": "other",
+      "primaryValue": 484,
       "values": [
         484
       ]
@@ -80,6 +98,8 @@
     {
       "row": 40,
       "label": "6421.5",
+      "category": "other",
+      "primaryValue": 528,
       "values": [
         528
       ]
@@ -87,6 +107,8 @@
     {
       "row": 41,
       "label": "6421.6",
+      "category": "other",
+      "primaryValue": 5030,
       "values": [
         5030
       ]
@@ -94,6 +116,8 @@
     {
       "row": 42,
       "label": "6421.7",
+      "category": "other",
+      "primaryValue": 7492,
       "values": [
         7492
       ]
@@ -101,6 +125,8 @@
     {
       "row": 43,
       "label": "154",
+      "category": "other",
+      "primaryValue": 5325,
       "values": [
         5325
       ]
@@ -108,6 +134,8 @@
     {
       "row": 45,
       "label": "6421-15",
+      "category": "other",
+      "primaryValue": 87,
       "values": [
         87
       ]
@@ -115,6 +143,8 @@
     {
       "row": 46,
       "label": "6421.8",
+      "category": "other",
+      "primaryValue": 484,
       "values": [
         484
       ]
@@ -122,6 +152,8 @@
     {
       "row": 63,
       "label": "Các khoản chi khác (cho vay, tín dụng,...)",
+      "category": "other",
+      "primaryValue": 86754,
       "values": [
         86754
       ]
@@ -129,6 +161,8 @@
     {
       "row": 64,
       "label": "Khoản đi vay",
+      "category": "other",
+      "primaryValue": 41,
       "values": [
         41
       ]
@@ -136,6 +170,8 @@
     {
       "row": 66,
       "label": "CUỒI KỲ",
+      "category": "other",
+      "primaryValue": 10000,
       "values": [
         10000,
         10000,

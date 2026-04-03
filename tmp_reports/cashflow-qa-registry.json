@@ -1,25 +1,25 @@
 {
   "latest": {
-    "period": "2026-04",
-    "sourceFilePath": "/root/project/BE_ACCOUNT/uploads/gl_1775124170317_cashflow_2026-01.xlsx",
-    "reportFilePath": "/root/project/BE_ACCOUNT/exports/cashflow_.xlsx",
-    "qaDatasetPath": "/root/project/BE_ACCOUNT/tmp_reports/cashflow-qa-2026-04.json",
-    "generatedAt": "2026-04-02T10:02:52.296Z"
+    "period": "2026-01",
+    "sourceFilePath": "/root/project/BE_ACCOUNT/uploads/gl_1775151068878_So_chi_tiet_cac_tai_khoan.xlsx",
+    "reportFilePath": "/root/project/BE_ACCOUNT/exports/cashflow_2026-01.xlsx",
+    "qaDatasetPath": "/root/project/BE_ACCOUNT/tmp_reports/cashflow-qa-2026-01.json",
+    "generatedAt": "2026-04-02T17:32:40.476Z"
   },
   "items": [
+    {
+      "period": "2026-01",
+      "sourceFilePath": "/root/project/BE_ACCOUNT/uploads/gl_1775151068878_So_chi_tiet_cac_tai_khoan.xlsx",
+      "reportFilePath": "/root/project/BE_ACCOUNT/exports/cashflow_2026-01.xlsx",
+      "qaDatasetPath": "/root/project/BE_ACCOUNT/tmp_reports/cashflow-qa-2026-01.json",
+      "generatedAt": "2026-04-02T17:32:40.476Z"
+    },
     {
       "period": "2026-04",
       "sourceFilePath": "/root/project/BE_ACCOUNT/uploads/gl_1775124170317_cashflow_2026-01.xlsx",
       "reportFilePath": "/root/project/BE_ACCOUNT/exports/cashflow_.xlsx",
       "qaDatasetPath": "/root/project/BE_ACCOUNT/tmp_reports/cashflow-qa-2026-04.json",
       "generatedAt": "2026-04-02T10:02:52.296Z"
-    },
-    {
-      "period": "2026-01",
-      "sourceFilePath": "/root/project/BE_ACCOUNT/uploads/gl_1775124163099_So_chi_tiet_cac_tai_khoan (1).xlsx",
-      "reportFilePath": "/root/project/BE_ACCOUNT/exports/cashflow_2026-01.xlsx",
-      "qaDatasetPath": "/root/project/BE_ACCOUNT/tmp_reports/cashflow-qa-2026-01.json",
-      "generatedAt": "2026-04-02T10:02:45.282Z"
     }
   ]
 }

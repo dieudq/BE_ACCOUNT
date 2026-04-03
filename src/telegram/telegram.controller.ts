@@ -171,7 +171,7 @@ export class TelegramController {
   ) {
     try {
       const bot = this.telegram.getBot();
-      await bot.sendMessage(chatId, '⏳ Processing file...');
+      await bot.sendMessage(chatId, '⏳ Đang xử lý, chờ tôi tí...');
       const fileInfo = await bot.getFile(document.file_id);
       if (!fileInfo || !fileInfo.file_path) throw new Error('File path error');
 
@@ -205,7 +205,7 @@ export class TelegramController {
       );
     } catch (err) {
       const bot = this.telegram.getBot();
-      await bot.sendMessage(chatId, `❌ Error processing file: ${err.message}`);
+      await bot.sendMessage(chatId, `❌ Lỗi khi xử lý file: ${err.message}`);
     }
   }
 }

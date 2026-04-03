@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import Groq from 'groq-sdk';
-import axios, { AxiosError } from 'axios';
+import axios from 'axios';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 interface ModelConfig {
   provider: 'groq' | 'deepseek' | 'anthropic' | 'gemini' | 'openai';
   model: string;
   apiKey: string;
+  apiKeys?: string[];
   maxTokens: number;
   temperature: number;
 }
@@ -37,6 +38,7 @@ export class LLMGatewayService {
       provider: 'gemini',
       model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
       apiKey: process.env.GEMINI_API_KEY || '',
+      apiKeys: this.parseApiKeys('GEMINI_API_KEYS', 'GEMINI_API_KEY'),
       maxTokens: 1024,
       temperature: 0.7,
     });
@@ -46,6 +48,7 @@ export class LLMGatewayService {
       provider: 'groq',
       model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
       apiKey: process.env.GROQ_API_KEY || '',
+      apiKeys: this.parseApiKeys('GROQ_API_KEYS', 'GROQ_API_KEY'),
       maxTokens: 2048,
       temperature: 0.3,
     };
@@ -55,6 +58,7 @@ export class LLMGatewayService {
       provider: 'openai',
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       apiKey: process.env.OPENAI_API_KEY || '',
+      apiKeys: this.parseApiKeys('OPENAI_API_KEYS', 'OPENAI_API_KEY'),
       maxTokens: 2048,
       temperature: 0.3,
     });
@@ -64,6 +68,7 @@ export class LLMGatewayService {
       provider: 'deepseek',
       model: 'deepseek-chat',
       apiKey: process.env.DEEPSEEK_API_KEY || '',
+      apiKeys: this.parseApiKeys('DEEPSEEK_API_KEYS', 'DEEPSEEK_API_KEY'),
       maxTokens: 1024,
       temperature: 0.7,
     });
@@ -73,6 +78,7 @@ export class LLMGatewayService {
       provider: 'anthropic',
       model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
       apiKey: process.env.ANTHROPIC_API_KEY || '',
+      apiKeys: this.parseApiKeys('ANTHROPIC_API_KEYS', 'ANTHROPIC_API_KEY'),
       maxTokens: 2048,
       temperature: 0.7,
     });
@@ -93,7 +99,7 @@ export class LLMGatewayService {
 
       // Try fallback models in order
       for (const config of this.fallbackConfigs) {
-        if (!config.apiKey) continue; // Skip if no API key
+        if (this.getConfigKeys(config).length === 0) continue; // Skip if no API key
 
         const fallbackResult = await this.callModelWithRetry(config, prompt, systemPrompt);
         if (fallbackResult.success) {
@@ -105,7 +111,7 @@ export class LLMGatewayService {
       throw new Error('All LLM providers failed');
     } catch (error) {
       console.error('❌ LLM Gateway error:', (error as Error).message);
-      return 'Service temporarily unavailable. Please try again later.';
+      throw new Error('LLM service unavailable: all providers failed');
     }
   }
 
@@ -148,43 +154,57 @@ export class LLMGatewayService {
     prompt: string,
     systemPrompt?: string,
   ): Promise<ProviderResponse> {
-    const providerId = `${config.provider}:${config.model}`;
-
-    // Check circuit breaker
-    if (this.isCircuitOpen(providerId)) {
-      console.warn(`⏸️ Circuit breaker open for ${providerId}`);
-      return { success: false, error: 'Circuit breaker open' };
+    const keys = this.getConfigKeys(config);
+    if (keys.length === 0) {
+      return { success: false, error: 'No API key configured' };
     }
 
-    try {
-      let response: string;
+    let lastError = 'Unknown provider error';
 
-      if (config.provider === 'groq') {
-        response = await this.callGroq(config, prompt, systemPrompt);
-      } else if (config.provider === 'openai') {
-        response = await this.callOpenAI(config, prompt, systemPrompt);
-      } else if (config.provider === 'deepseek') {
-        response = await this.callDeepSeek(config, prompt, systemPrompt);
-      } else if (config.provider === 'anthropic') {
-        response = await this.callAnthropic(config, prompt, systemPrompt);
-      } else if (config.provider === 'gemini') {
-        response = await this.callGemini(config, prompt, systemPrompt);
-      } else {
-        return { success: false, error: 'Unknown provider' };
+    for (const key of keys) {
+      const providerId = `${config.provider}:${config.model}:${this.getKeyFingerprint(key)}`;
+
+      // Check circuit breaker per-key
+      if (this.isCircuitOpen(providerId)) {
+        console.warn(`⏸️ Circuit breaker open for ${providerId}`);
+        lastError = 'Circuit breaker open';
+        continue;
       }
 
-      // Reset circuit breaker on success
-      this.circuitBreakers.delete(providerId);
+      try {
+        let response: string;
 
-      return {
-        success: true,
-        content: response,
-        provider: config.provider,
-        model: config.model,
-      };
-    } catch (error) {
-      return this.handleProviderError(providerId, error as AxiosError);
+        if (config.provider === 'groq') {
+          response = await this.callGroq(config, prompt, systemPrompt, key);
+        } else if (config.provider === 'openai') {
+          response = await this.callOpenAI(config, prompt, systemPrompt, key);
+        } else if (config.provider === 'deepseek') {
+          response = await this.callDeepSeek(config, prompt, systemPrompt, key);
+        } else if (config.provider === 'anthropic') {
+          response = await this.callAnthropic(config, prompt, systemPrompt, key);
+        } else if (config.provider === 'gemini') {
+          response = await this.callGemini(config, prompt, systemPrompt, key);
+        } else {
+          return { success: false, error: 'Unknown provider' };
+        }
+
+        // Reset circuit breaker on success
+        this.circuitBreakers.delete(providerId);
+
+        return {
+          success: true,
+          content: response,
+          provider: config.provider,
+          model: config.model,
+        };
+      } catch (error) {
+        const handled = this.handleProviderError(providerId, error);
+        lastError = handled.error || lastError;
+        // Try next key/provider
+      }
     }
+
+    return { success: false, error: lastError };
   }
 
   /**
@@ -194,6 +214,7 @@ export class LLMGatewayService {
     config: ModelConfig,
     prompt: string,
     systemPrompt?: string,
+    apiKey?: string,
   ): Promise<string> {
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
@@ -216,7 +237,7 @@ export class LLMGatewayService {
       },
       {
         headers: {
-          Authorization: `Bearer ${config.apiKey}`,
+          Authorization: `Bearer ${apiKey || config.apiKey}`,
           'Content-Type': 'application/json',
         },
         timeout: 30000,
@@ -233,8 +254,9 @@ export class LLMGatewayService {
     config: ModelConfig,
     prompt: string,
     systemPrompt?: string,
+    apiKey?: string,
   ): Promise<string> {
-    const client = new Groq({ apiKey: config.apiKey });
+    const client = new Groq({ apiKey: apiKey || config.apiKey });
 
     const response = await client.chat.completions.create({
       model: config.model,
@@ -262,6 +284,7 @@ export class LLMGatewayService {
     config: ModelConfig,
     prompt: string,
     systemPrompt?: string,
+    apiKey?: string,
   ): Promise<string> {
     const response = await axios.post(
       'https://api.deepseek.com/chat/completions',
@@ -282,7 +305,7 @@ export class LLMGatewayService {
       },
       {
         headers: {
-          'Authorization': `Bearer ${config.apiKey}`,
+          'Authorization': `Bearer ${apiKey || config.apiKey}`,
           'Content-Type': 'application/json',
         },
         timeout: 30000,
@@ -299,6 +322,7 @@ export class LLMGatewayService {
     config: ModelConfig,
     prompt: string,
     systemPrompt?: string,
+    apiKey?: string,
   ): Promise<string> {
     const response = await axios.post(
       'https://api.anthropic.com/v1/messages',
@@ -315,7 +339,7 @@ export class LLMGatewayService {
       },
       {
         headers: {
-          'x-api-key': config.apiKey,
+          'x-api-key': apiKey || config.apiKey,
           'anthropic-version': '2023-06-01',
         },
         timeout: 30000,
@@ -332,8 +356,9 @@ export class LLMGatewayService {
     config: ModelConfig,
     prompt: string,
     systemPrompt?: string,
+    apiKey?: string,
   ): Promise<string> {
-    const genAI = new GoogleGenerativeAI(config.apiKey);
+    const genAI = new GoogleGenerativeAI(apiKey || config.apiKey);
     const model = genAI.getGenerativeModel({
       model: config.model,
       systemInstruction: systemPrompt || 'You are a helpful assistant. Always respond with plain text, NO markdown.',
@@ -350,10 +375,11 @@ export class LLMGatewayService {
   /**
    * Handle provider error and manage circuit breaker
    */
-  private handleProviderError(providerId: string, error: AxiosError): ProviderResponse {
-    const status = error.response?.status;
+  private handleProviderError(providerId: string, error: unknown): ProviderResponse {
+    const status = this.extractStatusCode(error);
+    const message = this.extractErrorMessage(error);
 
-    if (status === 429) {
+    if (status === 429 || /rate\s*limit|quota|too\s*many\s*requests/i.test(message)) {
       console.error(`⚠️ Rate limit (429) for ${providerId}`);
       this.recordCircuitBreakerFailure(providerId, 60000); // 60s cooldown
       return { success: false, error: 'Rate limited' };
@@ -370,9 +396,9 @@ export class LLMGatewayService {
       return { success: false, error: 'Provider server error' };
     }
 
-    console.error(`❌ Unknown error for ${providerId}:`, error.message);
+    console.error(`❌ Unknown error for ${providerId}:`, message);
     this.recordCircuitBreakerFailure(providerId, 10000); // 10s cooldown
-    return { success: false, error: error.message };
+    return { success: false, error: message };
   }
 
   /**
@@ -388,6 +414,48 @@ export class LLMGatewayService {
     }
 
     this.circuitBreakers.set(providerId, current);
+  }
+
+  private parseApiKeys(multiEnvName: string, singleEnvName: string): string[] {
+    const multiRaw = process.env[multiEnvName] || '';
+    const singleRaw = process.env[singleEnvName] || '';
+
+    const keys = [
+      ...multiRaw
+        .split(',')
+        .map((k) => k.trim())
+        .filter(Boolean),
+      singleRaw.trim(),
+    ].filter(Boolean);
+
+    return Array.from(new Set(keys));
+  }
+
+  private getConfigKeys(config: ModelConfig): string[] {
+    if (config.apiKeys && config.apiKeys.length > 0) return config.apiKeys;
+    if (config.apiKey) return [config.apiKey];
+    return [];
+  }
+
+  private getKeyFingerprint(apiKey: string): string {
+    const clean = apiKey.trim();
+    if (clean.length <= 8) return clean || 'no-key';
+    return `${clean.slice(0, 4)}...${clean.slice(-4)}`;
+  }
+
+  private extractStatusCode(error: unknown): number | undefined {
+    const anyErr = error as any;
+    return anyErr?.response?.status ?? anyErr?.status;
+  }
+
+  private extractErrorMessage(error: unknown): string {
+    const anyErr = error as any;
+    const msg =
+      anyErr?.response?.data?.error?.message ||
+      anyErr?.response?.data?.message ||
+      anyErr?.message ||
+      'Unknown provider error';
+    return String(msg);
   }
 
   /**
